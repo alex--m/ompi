@@ -28,6 +28,7 @@
 # Copyright (c) 2018      FUJITSU LIMITED.  All rights reserved.
 # Copyright (c) 2019      Triad National Security, LLC. All rights
 #                         reserved.
+# Copyright (c) 2020      Huawei Technologies Co., Ltd.  All Rights reserved.
 # Copyright (c) 2023      Jeffrey M. Squyres.  All rights reserved.
 # Copyright (c) 2025      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
@@ -175,6 +176,7 @@ AC_SUBST(libmca_opal_common_cuda_so_version)
 AC_SUBST(libmca_opal_common_sm_so_version)
 AC_SUBST(libmca_ompi_common_ompio_so_version)
 AC_SUBST(libmca_ompi_common_monitoring_so_version)
+AC_SUBST(libmca_ompi_common_ucx_so_version)
 AC_SUBST(libmca_opal_common_ucx_so_version)
 
 #
