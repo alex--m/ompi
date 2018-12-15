@@ -14,6 +14,10 @@
 
 #include "opal_config.h"
 
+#ifdef HAVE_UCG
+#include <ucg/api/ucg.h>
+#endif
+
 #include "common_ucx.h"
 #include "opal/mca/base/mca_base_var.h"
 #include "opal/mca/base/mca_base_framework.h"
@@ -381,7 +385,11 @@ int opal_common_ucx_recv_worker_address(opal_process_name_t *proc_name,
 }
 
 int opal_common_ucx_open(const char *prefix,
+#ifdef HAVE_UCG
+                         const ucg_params_t *ucg_params,
+#else
                          const ucp_params_t *ucp_params,
+#endif
                          size_t *request_size)
 {
     ucp_context_attr_t attr;
@@ -393,6 +401,20 @@ int opal_common_ucx_open(const char *prefix,
         goto query;
     }
 
+#ifdef HAVE_UCG
+    ucg_config_t *config;
+    status = ucg_config_read(prefix, NULL, &config);
+    if (UCS_OK != status) {
+        return OPAL_ERROR;
+    }
+
+    status = ucg_init(ucg_params, config, &opal_common_ucx.ucg_context);
+    if (UCS_OK == status) {
+        opal_common_ucx.ucp_context =
+                ucg_context_get_ucp(opal_common_ucx.ucg_context);
+    }
+    ucg_config_release(config);
+#else
     ucp_config_t *config;
     status = ucp_config_read("MPI", NULL, &config);
     if (UCS_OK != status) {
@@ -401,6 +423,7 @@ int opal_common_ucx_open(const char *prefix,
 
     status = ucp_init(&ucp_params, config, &opal_common_ucx.ucp_context);
     ucp_config_release(config);
+#endif
 
     if (UCS_OK != status) {
         return OPAL_ERROR;
@@ -431,7 +454,11 @@ query:
     return OPAL_SUCCESS;
 
 cleanup_ctx:
+#ifdef HAVE_UCG
+    ucg_cleanup(opal_common_ucx.ucg_context);
+#else
     ucp_cleanup(opal_common_ucx.ucp_context);
+#endif
     return OPAL_ERROR;
 }
 
