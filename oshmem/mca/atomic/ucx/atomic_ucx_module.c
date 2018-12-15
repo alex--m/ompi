@@ -2,9 +2,9 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -74,6 +74,7 @@ int mca_atomic_ucx_op(shmem_ctx_t ctx,
                                    op, &value, 1, rva, ucx_mkey->rkey,
                                    &mca_spml_ucp_request_params[size >> 3]);
     res = opal_common_ucx_wait_request(status_ptr, ucx_ctx->ucp_worker[0],
+                                       OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
                                        "ucp_atomic_op_nbx post");
 #else
     status = ucp_atomic_post(ucx_ctx->ucp_peers[pe].ucp_conn,
@@ -123,6 +124,7 @@ int mca_atomic_ucx_fop(shmem_ctx_t ctx,
     status_ptr = ucp_atomic_op_nbx(ucx_ctx->ucp_peers[pe].ucp_conn, op, &value, 1,
                                    rva, ucx_mkey->rkey, &param);
     return opal_common_ucx_wait_request(status_ptr, ucx_ctx->ucp_worker[0],
+                                        OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
                                         "ucp_atomic_op_nbx");
 #else
     status_ptr = ucp_atomic_fetch_nb(ucx_ctx->ucp_peers[pe].ucp_conn,
@@ -130,6 +132,7 @@ int mca_atomic_ucx_fop(shmem_ctx_t ctx,
                                      rva, ucx_mkey->rkey,
                                      opal_common_ucx_empty_complete_cb);
     return opal_common_ucx_wait_request(status_ptr, ucx_ctx->ucp_worker[0],
+                                        OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
                                         "ucp_atomic_fetch_nb");
 #endif
 }

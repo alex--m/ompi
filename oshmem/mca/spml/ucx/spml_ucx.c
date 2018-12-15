@@ -10,7 +10,7 @@
  *
  * $HEADER$
  */
- 
+
 #define _GNU_SOURCE
 #include <stdio.h>
 
@@ -513,7 +513,7 @@ static int oshmem_shmem_xchng(
     unsigned int *rcv_sizes   = NULL;
     int *_rcv_sizes = NULL;
     unsigned int *rcv_offsets = NULL;
-    int *_rcv_offsets = NULL; 
+    int *_rcv_offsets = NULL;
     void *rcv_buf       = NULL;
     int rc;
     int i,j,k;
@@ -529,7 +529,7 @@ static int oshmem_shmem_xchng(
     if (NULL == rcv_sizes) {
         goto err;
     }
-   
+
     rc = oshmem_shmem_allgather(local_size, rcv_sizes, ucp_workers * sizeof(*rcv_sizes));
     if (MPI_SUCCESS != rc) {
         goto err;
@@ -546,7 +546,7 @@ static int oshmem_shmem_xchng(
     if (NULL == rcv_buf) {
         goto err;
     }
-   
+
     int _local_size = 0;
     for (i = 0; i < ucp_workers; i++) {
         _local_size += local_size[i];
@@ -587,7 +587,7 @@ static int oshmem_shmem_xchng(
     return OSHMEM_SUCCESS;
 
 err:
-    if (rcv_buf) 
+    if (rcv_buf)
         free(rcv_buf);
     if (rcv_offsets)
         free(rcv_offsets);
@@ -1044,7 +1044,7 @@ static int mca_spml_ucx_ctx_create_common(long options, mca_spml_ucx_ctx_t **ucx
     ucx_ctx->ucp_worker = calloc(1, sizeof(ucp_worker_h));
     ucx_ctx->ucp_workers = 1;
     ucx_ctx->synchronized_quiet = mca_spml_ucx_ctx_default.synchronized_quiet;
-    ucx_ctx->strong_sync = mca_spml_ucx_ctx_default.strong_sync;      
+    ucx_ctx->strong_sync = mca_spml_ucx_ctx_default.strong_sync;
 
     params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
     if (oshmem_mpi_thread_provided == SHMEM_THREAD_SINGLE ||
@@ -1154,7 +1154,7 @@ int mca_spml_ucx_ctx_create(long options, shmem_ctx_t *ctx)
             return rc;
         }
     }
-    
+
     if (!(options & SHMEM_CTX_PRIVATE)) {
         SHMEM_MUTEX_LOCK(mca_spml_ucx.internal_mutex);
         _ctx_add(active_array, ucx_ctx);
@@ -1198,11 +1198,15 @@ int mca_spml_ucx_get(shmem_ctx_t ctx, void *src_addr, size_t size, void *dst_add
 #if HAVE_DECL_UCP_GET_NBX
     request = ucp_get_nbx(ucx_ctx->ucp_peers[src].ucp_conn, dst_addr, size,
                           (uint64_t)rva, ucx_mkey->rkey, &mca_spml_ucx_request_param_b);
-    return opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0], "ucp_get_nbx");
+    return opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0],
+                                        OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
+                                        "ucp_get_nbx");
 #elif HAVE_DECL_UCP_GET_NB
     request = ucp_get_nb(ucx_ctx->ucp_peers[src].ucp_conn, dst_addr, size,
                          (uint64_t)rva, ucx_mkey->rkey, opal_common_ucx_empty_complete_cb);
-    return opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0], "ucp_get_nb");
+    return opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0],
+                                        OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
+                                        "ucp_get_nb");
 #else
     status = ucp_get(ucx_ctx->ucp_peers[src].ucp_conn, dst_addr, size,
                      (uint64_t)rva, ucx_mkey->rkey);
@@ -1292,11 +1296,15 @@ int mca_spml_ucx_put(shmem_ctx_t ctx, void* dst_addr, size_t size, void* src_add
 #if HAVE_DECL_UCP_PUT_NBX
     request = ucp_put_nbx(ucx_ctx->ucp_peers[dst].ucp_conn, src_addr, size,
                           (uint64_t)rva, ucx_mkey->rkey, &mca_spml_ucx_request_param_b);
-    res = opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0], "ucp_put_nbx");
+    res = opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0],
+                                                OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
+                                                "ucp_put_nbx");
 #elif HAVE_DECL_UCP_PUT_NB
     request = ucp_put_nb(ucx_ctx->ucp_peers[dst].ucp_conn, src_addr, size,
                          (uint64_t)rva, ucx_mkey->rkey, opal_common_ucx_empty_complete_cb);
-    res = opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0], "ucp_put_nb");
+    res = opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0],
+                                       OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
+                                       "ucp_put_nb");
 #else
     status = ucp_put(ucx_ctx->ucp_peers[dst].ucp_conn, src_addr, size,
                      (uint64_t)rva, ucx_mkey->rkey);
@@ -1415,10 +1423,14 @@ static int mca_spml_ucx_strong_sync(shmem_ctx_t ctx)
         case SPML_UCX_STRONG_ORDERING_FLUSH:
             request = ucp_ep_flush_nbx(ucx_ctx->ucp_peers[idx].ucp_conn,
                                        &mca_spml_ucx_request_param_b);
-            ret = opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0], "ucp_flush_nbx");
+            ret = opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0],
+                                               OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
+                                               "ucp_flush_nbx");
 #elif HAVE_DECL_UCP_EP_FLUSH_NB
             request = ucp_ep_flush_nb(ucx_ctx->ucp_peers[idx].ucp_conn, 0, opal_common_ucx_empty_complete_cb);
-            ret = opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0], "ucp_flush_nb");
+            ret = opal_common_ucx_wait_request(request, ucx_ctx->ucp_worker[0],
+                                               OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
+                                               "ucp_flush_nb");
 #else
             status = ucp_ep_flush(ucx_ctx->ucp_peers[idx].ucp_conn);
             ret = (status == UCS_OK) ? OPAL_SUCCESS : OPAL_ERROR;
@@ -1681,7 +1693,7 @@ size_t mca_spml_ucx_wait_until_some(void *ivars, int cmp, void
     RUNTIME_SHMEM_NOT_IMPLEMENTED_API_ABORT_RET_SIZE_T();
 }
 
-/* This routine is not implemented */ 
+/* This routine is not implemented */
 void mca_spml_ucx_wait_until_all_vector(void *ivars, int cmp, void
         *cmp_values, size_t nelems, const int *status, int datatype)
 {
