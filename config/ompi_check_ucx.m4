@@ -8,6 +8,7 @@
 #                         reserved.
 # Copyright (c) 2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2022      Amazon.com, Inc. or its affiliates.  All Rights reserved.
+# Copyright (c) 2019 Huawei Technologies Co., Ltd.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -21,7 +22,7 @@
 # LDFLAGS, LIBS} as needed and runs action-if-found if there is
 # support, otherwise executes action-if-not-found
 AC_DEFUN([OMPI_CHECK_UCX],[
-    OPAL_VAR_SCOPE_PUSH([ompi_check_ucx_happy ompi_check_ucx_CPPFLAGS_save ompi_check_ucx_LDFLAGS_save ompi_check_ucx_LIBS_save])
+    OPAL_VAR_SCOPE_PUSH([ompi_check_ucx_happy ompi_check_ucg_happy ompi_check_ucx_CPPFLAGS_save ompi_check_ucx_LDFLAGS_save ompi_check_ucx_LIBS_save])
 
     m4_ifblank([$1], [m4_fatal([First argument to OMPI_CHECK_UCX cannot be blank])])
 
@@ -74,6 +75,8 @@ AC_DEFUN([OMPI_CHECK_UCX],[
                              [ompi_check_ucx_cv_have_version_gt_1_9=no
                               ompi_check_ucx_happy=no])])])
 
+    ompi_check_ucg_happy="no"
+
     AS_IF([test "$ompi_check_ucx_happy" = yes],
           [AC_CHECK_DECLS([ucp_tag_send_nbr],
                           [AC_DEFINE([HAVE_UCP_TAG_SEND_NBR],[1],
@@ -122,7 +125,16 @@ AC_DEFUN([OMPI_CHECK_UCX],[
            AC_CHECK_TYPES([ucp_request_param_t],
                           [], [],
                           [[#include <ucp/api/ucp.h>]])
+           AC_CHECK_DECLS([ucg_cleanup],
+                          [AC_DEFINE([HAVE_UCG], [1],
+                                     [have the UCG Collectives API])
+                           ompi_check_ucg_happy="yes"
+                           $1_LIBS="-lucg [$]$1_LIBS"], [],
+                          [#include <ucg/api/ucg.h>])
            ])
+
+    AM_CONDITIONAL([HAVE_UCG],
+                   [test "$ompi_check_ucx_happy" = "yes" -a "$ompi_check_ucg_happy" = "yes"])
 
     CPPFLAGS=${ompi_check_ucx_CPPFLAGS_save}
     LDFLAGS=${ompi_check_ucx_LDFLAGS_save}
