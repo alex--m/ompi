@@ -4,6 +4,8 @@
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2020      Huawei Technologies Co., Ltd.  All rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,10 +17,6 @@
 #define PML_UCX_REQUEST_H_
 
 #include "pml_ucx.h"
-#include "pml_ucx_datatype.h"
-#if MPI_VERSION >= 4
-#include "ompi/mca/pml/base/pml_base_sendreq.h"
-#endif
 
 
 enum {
@@ -39,7 +37,7 @@ enum {
 #define PML_UCX_RANK_BITS                      20
 #define PML_UCX_CONTEXT_BITS                   20
 #define PML_UCX_ANY_SOURCE_MASK                0x80000000000ffffful
-#define PML_UCX_SPECIFIC_SOURCE_MASK           0x800000fffffffffful
+#define PML_UCX_SPECIFIC_SOURCE_MASK           MCA_COMMON_UCX_SPECIFIC_SOURCE_MASK
 #define PML_UCX_TAG_MASK                       0x7fffff0000000000ul
 
 
@@ -98,20 +96,19 @@ enum {
 
 
 struct pml_ucx_persistent_request {
-    ompi_request_t                    ompi;
-    ompi_request_t                    *tmp_req;
-    unsigned                          flags;
-    void                              *buffer;
-    size_t                            count;
-    ucp_datatype_t                    datatype;
-    ompi_datatype_t                   *ompi_datatype;
-    ucp_tag_t                         tag;
+    mca_common_ucx_persistent_request_t super;
+    unsigned                            flags;
+    void                                *buffer;
+    size_t                              count;
+    ucp_datatype_t                      datatype;
+    ompi_datatype_t                     *ompi_datatype;
+    ucp_tag_t                           tag;
     struct {
-        mca_pml_base_send_mode_t      mode;
-        ucp_ep_h                      ep;
+        mca_pml_base_send_mode_t        mode;
+        ucp_ep_h                        ep;
     } send;
     struct {
-        ucp_tag_t                     tag_mask;
+        ucp_tag_t                       tag_mask;
     } recv;
 };
 
@@ -140,51 +137,6 @@ void mca_pml_ucx_recv_nbx_completion(void *request, ucs_status_t status,
                                      const ucp_tag_recv_info_t *info,
                                      void *user_data);
 
-void mca_pml_ucx_persistent_request_complete(mca_pml_ucx_persistent_request_t *preq,
-                                             ompi_request_t *tmp_req);
-
-void mca_pml_ucx_completed_request_init(ompi_request_t *ompi_req);
-
-void mca_pml_ucx_request_init(void *request);
-
-void mca_pml_ucx_request_cleanup(void *request);
-
-int mca_pml_ucx_request_cancel(ompi_request_t *req, int flag);
-#if MPI_VERSION >= 4
-int mca_pml_ucx_request_cancel_send(ompi_request_t *req, int flag);
-#endif
-
-
-static inline void mca_pml_ucx_request_reset(ompi_request_t *req)
-{
-    req->req_complete          = REQUEST_PENDING;
-}
-
-/* Use when setting a request's status field.
- * Note that a new function 'mca_mpl_ucx_set_send_status_public' shall
- * be created and used instead if updating a publicly visible status becomes
- * necessary (i.e., the status argument in an user-visible procedure), see the
- * recv_status case below for rationale.
- */
-__opal_attribute_always_inline__
-static inline void mca_pml_ucx_set_send_status(ompi_status_public_t* mpi_status,
-                                               ucs_status_t status)
-{
-    if (OPAL_LIKELY(status == UCS_OK)) {
-        mpi_status->MPI_ERROR  = MPI_SUCCESS;
-        mpi_status->_cancelled = false;
-    } else if (status == UCS_ERR_CANCELED) {
-        mpi_status->_cancelled = true;
-    } else {
-        mpi_status->MPI_ERROR  = MPI_ERR_INTERN;
-    }
-}
-
-/* Use when setting a request's status field.
- * Note that the next function 'mca_mpl_ucx_set_recv_status_public' shall
- * be used instead when updating a  publicly visible status (i.e., the 
- * status argument in an user-visible procedure).
- */
 static inline int mca_pml_ucx_set_recv_status(ompi_status_public_t* mpi_status,
                                                ucs_status_t ucp_status,
                                                const ucp_tag_recv_info_t *info)
@@ -252,8 +204,6 @@ static inline int mca_pml_ucx_set_recv_status_public(ompi_status_public_t* mpi_s
 
     return MPI_ERR_INTERN;
 }
-
-OBJ_CLASS_DECLARATION(mca_pml_ucx_persistent_request_t);
 
 
 #endif /* PML_UCX_REQUEST_H_ */
