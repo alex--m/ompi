@@ -73,17 +73,29 @@ enum opal_common_ucx_req_type {
 #endif
 };
 
+#if HAVE_UCG_API_UCG_H
+#define MCA_COMMON_UCX_PROGRESS_FUNC(_worker, _req_type) \
+    ((_req_type == OPAL_COMMON_UCX_REQUEST_TYPE_UCP) ?   \
+     ucp_worker_progress((void*)_worker) :               \
+     ucg_group_progress((void*)_worker))
+#else
+#define MCA_COMMON_UCX_PROGRESS_FUNC(_worker, _req_type) \
+    ucp_worker_progress(_worker)
+#endif
+
 /* progress loop to allow call UCX/opal progress, while testing requests by type */
 /* used C99 for-statement variable initialization */
-#define MCA_COMMON_UCX_PROGRESS_LOOP(_worker)                                 \
-    for (unsigned iter = 0;; (++iter % opal_common_ucx.progress_iterations) ? \
-                        (void)ucp_worker_progress(_worker) : opal_progress())
+#define MCA_COMMON_UCX_PROGRESS_LOOP(_worker, _req_type)                      \
+    unsigned iter_mask = (unsigned) opal_common_ucx.progress_iterations;      \
+    iter_mask = UCS_MASK(8 * sizeof(unsigned) - __builtin_clz(iter_mask));    \
+    for (unsigned iter = 0;; ((++iter & iter_mask) == 0) ? opal_progress() :  \
+        (void)MCA_COMMON_UCX_PROGRESS_FUNC(_worker, _req_type))
 
 #define MCA_COMMON_UCX_WAIT_LOOP(_request, _req_type, _worker, _msg, _completed)         \
     do {                                                                                 \
         ucs_status_t status;                                                             \
         /* call UCX progress */                                                          \
-        MCA_COMMON_UCX_PROGRESS_LOOP(_worker) {                                          \
+        MCA_COMMON_UCX_PROGRESS_LOOP(_worker, _req_type) {                               \
             status = opal_common_ucx_request_status(_request, _req_type);                \
             if (UCS_INPROGRESS != status) {                                              \
                 _completed;                                                              \
