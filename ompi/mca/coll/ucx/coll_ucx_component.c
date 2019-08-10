@@ -234,6 +234,8 @@ int mca_coll_ucx_open(void)
     params.mt_workers_shared = 0; /* we do not need mt support for context
                                      since it will be protected by worker */
     params.estimated_num_eps = ompi_proc_world_size();
+    params.my_local_peer_idx = ompi_process_info.my_local_rank;
+    params.num_local_peers   = ompi_process_info.num_local_peers + 1;
 
     status = ucg_init(&params, config, &mca_coll_ucx_component.ucg_context);
     ucg_config_release(config);

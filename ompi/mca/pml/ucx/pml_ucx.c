@@ -624,7 +624,8 @@ int mca_pml_ucx_recv(void *buf, size_t count, ompi_datatype_t *datatype, int src
                      mca_pml_ucx_get_datatype(datatype),
                      ucp_tag, ucp_tag_mask, req);
 #endif
-    MCA_COMMON_UCX_PROGRESS_LOOP(ompi_pml_ucx.ucp_worker) {
+    MCA_COMMON_UCX_PROGRESS_LOOP(ompi_pml_ucx.ucp_worker,
+            OPAL_COMMON_UCX_REQUEST_TYPE_UCP) {
         status = ucp_request_test(req, &info);
         if (status != UCS_INPROGRESS) {
             mca_pml_ucx_set_recv_status_safe(mpi_status, status, &info);
@@ -992,7 +993,8 @@ int mca_pml_ucx_probe(int src, int tag, struct ompi_communicator_t* comm,
 
     PML_UCX_MAKE_RECV_TAG(ucp_tag, ucp_tag_mask, tag, src, comm);
 
-    MCA_COMMON_UCX_PROGRESS_LOOP(ompi_pml_ucx.ucp_worker) {
+    MCA_COMMON_UCX_PROGRESS_LOOP(ompi_pml_ucx.ucp_worker,
+            OPAL_COMMON_UCX_REQUEST_TYPE_UCP) {
         ucp_msg = ucp_tag_probe_nb(ompi_pml_ucx.ucp_worker, ucp_tag,
                                    ucp_tag_mask, 0, &info);
         if (ucp_msg != NULL) {
@@ -1041,7 +1043,8 @@ int mca_pml_ucx_mprobe(int src, int tag, struct ompi_communicator_t* comm,
     PML_UCX_TRACE_PROBE("mprobe", src, tag, comm);
 
     PML_UCX_MAKE_RECV_TAG(ucp_tag, ucp_tag_mask, tag, src, comm);
-    MCA_COMMON_UCX_PROGRESS_LOOP(ompi_pml_ucx.ucp_worker) {
+    MCA_COMMON_UCX_PROGRESS_LOOP(ompi_pml_ucx.ucp_worker,
+            OPAL_COMMON_UCX_REQUEST_TYPE_UCP) {
         ucp_msg = ucp_tag_probe_nb(ompi_pml_ucx.ucp_worker, ucp_tag, ucp_tag_mask,
                                    1, &info);
         if (ucp_msg != NULL) {
