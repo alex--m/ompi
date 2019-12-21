@@ -314,7 +314,7 @@ int mca_coll_ucx_gather(const void *sbuf, int scount, struct ompi_datatype_t *sd
 
 int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
                                  void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
-                           int root, struct ompi_communicator_t *comm,
+                           struct ompi_communicator_t *comm,
                            mca_coll_base_module_t *module)
 {
     mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
@@ -330,8 +330,8 @@ int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t 
     MPI_Type_size(rdtype, &rdtype_size);
     ucs_status_t ret = ucg_coll_allgather_init(sbuf, scount, sdtype_size, sdtype,
                                                rbuf, rcount, rdtype_size, rdtype,
-                                               ucx_module->ucg_group, 0, 0, root,
-                                               0, &coll);
+                                               ucx_module->ucg_group, 0, 0, 0, 0,
+                                               &coll);
     if (OPAL_UNLIKELY(ret != UCS_OK)) {
         COLL_UCX_ERROR("ucx allgather init failed: %s", ucs_status_string(ret));
         return OMPI_ERROR;
@@ -349,6 +349,45 @@ int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t 
 
     MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
             ucx_module->ucg_group, "ucx allgather", (void)0);
+}
+
+int mca_coll_ucx_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
+                                void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+                          struct ompi_communicator_t *comm,
+                          mca_coll_base_module_t *module)
+{
+    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
+
+    COLL_UCX_TRACE("%s", sbuf, rbuf, scount, sdtype, comm, "allgather");
+
+    /* coverity[bad_alloc_arithmetic] */
+    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
+
+    ucg_coll_h coll;
+    int sdtype_size, rdtype_size;
+    MPI_Type_size(sdtype, &sdtype_size);
+    MPI_Type_size(rdtype, &rdtype_size);
+    ucs_status_t ret = ucg_coll_alltoall_init(sbuf, scount, sdtype_size, sdtype,
+                                              rbuf, rcount, rdtype_size, rdtype,
+                                              ucx_module->ucg_group, 0, 0, 0, 0,
+                                              &coll);
+    if (OPAL_UNLIKELY(ret != UCS_OK)) {
+        COLL_UCX_ERROR("ucx allgather init failed: %s", ucs_status_string(ret));
+        return OMPI_ERROR;
+    }
+
+    ret = ucg_collective_start_nbr(coll, req);
+    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
+        COLL_UCX_ERROR("ucx allgather start failed: %s", ucs_status_string(ret));
+        return OMPI_ERROR;
+    }
+
+    if (ucs_unlikely(ret == UCS_OK)) {
+        return OMPI_SUCCESS;
+    }
+
+    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
+            ucx_module->ucg_group, "ucx alltoall", (void)0);
 }
 
 int mca_coll_ucx_barrier(struct ompi_communicator_t *comm,

@@ -139,6 +139,7 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
     module->super.coll_scatter        = mca_coll_ucx_scatter;
     //module->super.coll_gather         = mca_coll_ucx_gather;
     //module->super.coll_allgather      = mca_coll_ucx_allgather;
+    module->super.coll_alltoall       = mca_coll_ucx_alltoall;
 }
 
 static void mca_coll_ucx_module_destruct(mca_coll_ucx_module_t *module) {

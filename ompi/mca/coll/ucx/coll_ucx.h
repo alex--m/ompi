@@ -157,8 +157,13 @@ int mca_coll_ucx_gather(const void *sbuf, int scount, struct ompi_datatype_t *sd
 
 int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
                                  void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
-                           int root, struct ompi_communicator_t *comm,
+                           struct ompi_communicator_t *comm,
                            mca_coll_base_module_t *module);
+
+int mca_coll_ucx_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
+                                void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+                          struct ompi_communicator_t *comm,
+                          mca_coll_base_module_t *module);
 
 int mca_coll_ucx_barrier(struct ompi_communicator_t *comm,
                          mca_coll_base_module_t *module);
