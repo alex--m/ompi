@@ -19,20 +19,22 @@
 #include "coll_ucx_request.h"
 
 static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
-		struct ompi_communicator_t *comm)
+                               struct ompi_communicator_t *comm)
 {
-    ucs_status_t error;
-    ucg_group_params_t args;
-    ucg_group_member_index_t rank_idx, my_idx;
-
 #if OMPI_GROUP_SPARSE
     COLL_UCX_ERROR("Sparse process groups are not supported");
     return UCS_ERR_UNSUPPORTED;
 #endif
 
     /* Fill in group initialization parameters */
-    my_idx                 = ompi_comm_rank(comm);
-	args.member_count      = ompi_comm_size(comm);
+    ucg_group_params_t args;
+    args.field_mask        = UCG_GROUP_PARAM_FIELD_MEMBER_COUNT |
+                             UCG_GROUP_PARAM_FIELD_MEMBER_INDEX |
+                             UCG_GROUP_PARAM_FIELD_DISTANCES    |
+                             UCG_GROUP_PARAM_FIELD_REDUCE_CB    |
+                             UCG_GROUP_PARAM_FIELD_RESOLVER_CB;
+    args.member_index      = ompi_comm_rank(comm);
+    args.member_count      = ompi_comm_size(comm);
     /* args.mpi_copy_f     = ompi_datatype_copy_content_same_ddt; */
     args.mpi_reduce_f      = ompi_op_reduce;
     args.resolve_address_f = mca_coll_ucx_resolve_address;
@@ -42,15 +44,15 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
     if (args.distance == NULL) {
         COLL_UCX_ERROR("Failed to allocate memory for %lu local ranks", args.member_count);
         return OMPI_ERROR;
-
     }
 
     /* Generate (temporary) rank-distance array */
+    ucg_group_member_index_t rank_idx;
     for (rank_idx = 0; rank_idx < args.member_count; rank_idx++) {
-    	struct ompi_proc_t *rank_iter =
-    			(struct ompi_proc_t*)ompi_comm_peer_lookup(comm, rank_idx);
+        struct ompi_proc_t *rank_iter =
+                (struct ompi_proc_t*)ompi_comm_peer_lookup(comm, rank_idx);
         rank_iter->proc_endpoints[OMPI_PROC_ENDPOINT_TAG_COLL] = NULL;
-        if (rank_idx == my_idx) {
+        if (rank_idx == args.member_index) {
             args.distance[rank_idx] = UCG_GROUP_MEMBER_DISTANCE_SELF;
         } else if (OPAL_PROC_ON_LOCAL_SOCKET(rank_iter->super.proc_flags)) {
             args.distance[rank_idx] = UCG_GROUP_MEMBER_DISTANCE_SOCKET;
@@ -64,7 +66,9 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
     /* TODO: use additional info, such as OMPI_COMM_IS_CART(comm) */
     /* TODO: add support for comm->c_remote_comm  */
     /* TODO: add support for sparse group storage */
-    error = ucg_group_create(mca_coll_ucx_component.ucg_worker, &args, &module->ucg_group);
+
+    ucs_status_t error = ucg_group_create(mca_coll_ucx_component.ucg_worker,
+                                          &args, &module->ucg_group);
 
     /* Examine comm_new return value */
     if (error != UCS_OK) {
