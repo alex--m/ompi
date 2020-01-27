@@ -221,7 +221,8 @@ int mca_coll_ucx_open(void)
                                UCP_PARAM_FIELD_REQUEST_CLEANUP |
                                // UCP_PARAM_FIELD_TAG_SENDER_MASK |
                                UCP_PARAM_FIELD_MT_WORKERS_SHARED |
-                               UCP_PARAM_FIELD_ESTIMATED_NUM_EPS;
+                               UCP_PARAM_FIELD_ESTIMATED_NUM_EPS |
+                               UCP_PARAM_FIELD_LOCAL_PEER_INFO;
     params.features          = UCP_FEATURE_TAG |
                                UCP_FEATURE_RMA |
                                UCP_FEATURE_AMO32 |
