@@ -13,25 +13,18 @@
 #define MCA_COLL_UCX_H
 
 #include "ompi_config.h"
-
-#include "mpi.h"
-#include "ompi/mca/mca.h"
-#include "opal/memoryhooks/memory.h"
-#include "opal/mca/memory/base/base.h"
-#include "ompi/mca/coll/coll.h"
 #include "ompi/request/request.h"
-#include "ompi/mca/pml/pml.h"
+#include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
-#include "ompi/communicator/communicator.h"
 #include "ompi/datatype/ompi_datatype.h"
-#include "ompi/attribute/attribute.h"
+#include "ompi/datatype/ompi_datatype_internal.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/request/request.h"
+#include "opal/mca/common/ucx/common_ucx.h"
 #include "ompi/op/op.h"
 
-#include "orte/runtime/orte_globals.h"
-#include "opal/mca/common/ucx/common_ucx.h"
-
-#include "ucg/api/ucg_mpi.h"
-#include "ucs/datastruct/list.h"
+#include <ucg/api/ucg_mpi.h>
+#include <ucs/datastruct/list.h>
 #include "coll_ucx_freelist.h"
 
 #ifndef UCX_VERSION

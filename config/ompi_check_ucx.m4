@@ -42,13 +42,12 @@ AC_DEFUN([OMPI_CHECK_UCX],[
                                              [true])])
                   ompi_check_ucx_happy="no"
                   ompi_check_ucg_happy="no"
-                  ucx_libs="-luct -lucm -lucs"
                   AS_IF([test -z "$ompi_check_ucx_dir"],
                         [OPAL_CHECK_PACKAGE([ompi_check_ucx],
                                    [ucp/api/ucp.h],
                                    [ucp],
                                    [ucp_cleanup],
-                                   [$ucx_libs],
+                                   [-luct -lucm -lucs],
                                    [],
                                    [],
                                    [ompi_check_ucx_happy="yes"],
@@ -57,7 +56,7 @@ AC_DEFUN([OMPI_CHECK_UCX],[
                                    [ucg/api/ucg.h],
                                    [ucg],
                                    [ucg_request_check_status],
-                                   [-lucg $ucx_libs],
+                                   [-lucp -luct -lucm -lucs],
                                    [],
                                    [],
                                    [ompi_check_ucg_happy="yes"],
@@ -89,7 +88,7 @@ AC_DEFUN([OMPI_CHECK_UCX],[
                                             [ucp/api/ucp.h],
                                             [ucp],
                                             [ucp_cleanup],
-                                            [$ucx_libs],
+                                            [-luct -lucm -lucs],
                                             [$ompi_check_ucx_dir],
                                             [$ompi_check_ucx_libdir],
                                             [ompi_check_ucx_happy="yes"],
@@ -98,7 +97,7 @@ AC_DEFUN([OMPI_CHECK_UCX],[
                                             [ucg/api/ucg.h],
                                             [ucg],
                                             [ucg_request_check_status],
-                                            [-lucg $ucx_libs],
+                                            [-lucp -luct -lucm -lucs],
                                             [$ompi_check_ucx_dir],
                                             [$ompi_check_ucx_libdir],
                                             [ompi_check_ucg_happy="yes"],
