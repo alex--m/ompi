@@ -20,8 +20,8 @@ AC_DEFUN([MCA_ompi_coll_ucx_CONFIG],[
     AC_CONFIG_FILES([ompi/mca/coll/ucx/Makefile])
 
     OMPI_CHECK_UCX([coll_ucx],
-                     [coll_ucx_happy="yes"],
-                     [coll_ucx_happy="no"])
+                   [coll_ucx_happy="yes"],
+                   [coll_ucx_happy="no"])
 
     AS_IF([test "$coll_ucx_happy" = "yes"],
           [$1],

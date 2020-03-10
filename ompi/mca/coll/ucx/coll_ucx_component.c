@@ -1,33 +1,16 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2011 Mellanox Technologies. All rights reserved.
- * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
- *                         reserved.
+ * Copyright (c) 2015 Los Alamos National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
  *
  * $HEADER$
  */
-#include "ompi_config.h"
-#include <stdio.h>
-
-#include <dlfcn.h>
-#include <libgen.h>
-
-#include "opal/mca/common/ucx/common_ucx.h"
-#include "opal/mca/installdirs/installdirs.h"
 
 #include "coll_ucx.h"
 #include "coll_ucx_request.h"
-
-
-/*
- * Public string showing the coll ompi_hcol component version number
- */
-const char *mca_coll_ucx_component_version_string =
-  "Open MPI UCX collective MCA component version " OMPI_VERSION;
-
 
 static int ucx_open(void);
 static int ucx_close(void);
@@ -37,7 +20,6 @@ int mca_coll_ucx_init_query(bool enable_progress_threads,
 mca_coll_base_module_t *
 mca_coll_ucx_comm_query(struct ompi_communicator_t *comm, int *priority);
 
-int mca_coll_ucx_output = -1;
 mca_coll_ucx_component_t mca_coll_ucx_component = {
 
     /* First, the mca_component_t struct containing meta information
@@ -158,44 +140,102 @@ static int ucx_close(void)
     return mca_coll_ucx_close();
 }
 
+#if HAVE_UCP_WORKER_ADDRESS_FLAGS
+static int mca_coll_ucx_send_worker_address_type(int addr_flags, int modex_scope)
+{
+    ucs_status_t status;
+    ucp_worker_attr_t attrs;
+    int rc;
+
+    attrs.field_mask    = UCP_WORKER_ATTR_FIELD_ADDRESS |
+                          UCP_WORKER_ATTR_FIELD_ADDRESS_FLAGS;
+    attrs.address_flags = addr_flags;
+
+    status = ucp_worker_query(mca_coll_ucx_component.ucg_worker, &attrs);
+    if (UCS_OK != status) {
+        COLL_UCX_ERROR("Failed to query UCP worker address");
+        return OMPI_ERROR;
+    }
+
+    OPAL_MODEX_SEND(rc, modex_scope, &mca_coll_ucx_component.super.collm_version,
+                    (void*)attrs.address, attrs.address_length);
+
+    ucp_worker_release_address(mca_coll_ucx_component.ucg_worker, attrs.address);
+
+    if (OMPI_SUCCESS != rc) {
+        return OMPI_ERROR;
+    }
+
+    COLL_UCX_VERBOSE(2, "Pack %s worker address, size %ld",
+                     (modex_scope == PMIX_LOCAL) ? "local" : "remote",
+                     attrs.address_length);
+
+    return OMPI_SUCCESS;
+}
+#endif
+
 static int mca_coll_ucx_send_worker_address(void)
 {
-    ucg_address_t *address;
     ucs_status_t status;
+
+#if !HAVE_UCP_WORKER_ADDRESS_FLAGS
+    ucp_address_t *address;
     size_t addrlen;
     int rc;
 
-    status = ucg_worker_get_address(mca_coll_ucx_component.ucg_worker, &address, &addrlen);
+    status = ucp_worker_get_address(ompi_coll_ucx.ucp_worker, &address, &addrlen);
     if (UCS_OK != status) {
         COLL_UCX_ERROR("Failed to get worker address");
         return OMPI_ERROR;
     }
 
-    OPAL_MODEX_SEND(rc, OPAL_PMIX_GLOBAL, &mca_coll_ucx_component.super.collm_version,
-          (void*)address, addrlen);
-    if (OPAL_SUCCESS != rc) {
-        COLL_UCX_ERROR("Open MPI couldn't distribute EP connection details");
-        return OMPI_ERROR;
+    COLL_UCX_VERBOSE(2, "Pack worker address, size %ld", addrlen);
+
+    OPAL_MODEX_SEND(rc, PMIX_GLOBAL,
+                    &mca_coll_ucx_component.super.collm_version, (void*)address, addrlen);
+
+    ucp_worker_release_address(ompi_coll_ucx.ucp_worker, address);
+
+    if (OMPI_SUCCESS != rc) {
+        goto err;
+    }
+#else
+    /* Pack just network device addresses for remote node peers */
+    status = mca_coll_ucx_send_worker_address_type(UCP_WORKER_ADDRESS_FLAG_NET_ONLY,
+                                                   PMIX_REMOTE);
+    if (UCS_OK != status) {
+        goto err;
     }
 
-    ucg_worker_release_address(mca_coll_ucx_component.ucg_worker, address);
+    status = mca_coll_ucx_send_worker_address_type(0, PMIX_LOCAL);
+    if (UCS_OK != status) {
+        goto err;
+    }
+#endif
 
     return OMPI_SUCCESS;
+
+err:
+    COLL_UCX_ERROR("Open MPI couldn't distribute EP connection details");
+    return OMPI_ERROR;
 }
 
 static int mca_coll_ucx_recv_worker_address(ompi_proc_t *proc,
-                                            ucg_address_t **address_p,
+                                            ucp_address_t **address_p,
                                             size_t *addrlen_p)
 {
     int ret;
 
     *address_p = NULL;
-    OPAL_MODEX_RECV(ret, &mca_coll_ucx_component.super.collm_version,
-          &proc->super.proc_name, (void**)address_p, addrlen_p);
-    if (ret != OPAL_SUCCESS) {
+    OPAL_MODEX_RECV(ret, &mca_coll_ucx_component.super.collm_version, &proc->super.proc_name,
+                    (void**)address_p, addrlen_p);
+    if (ret < 0) {
         COLL_UCX_ERROR("Failed to receive UCX worker address: %s (%d)",
-                      opal_strerror(ret), ret);
+                       opal_strerror(ret), ret);
     }
+
+    COLL_UCX_VERBOSE(2, "Got proc %d address, size %ld",
+                     proc->super.proc_name.vpid, *addrlen_p);
     return ret;
 }
 
@@ -327,7 +367,7 @@ int mca_coll_ucx_init(void)
         goto err_destroy_worker;
     }
 
-    /* UCX does not support multithreading, disqualify current PML for now */
+    /* UCX does not support multithreading, disqualify current COLL for now */
     if (ompi_mpi_thread_multiple && (attr.thread_mode != UCS_THREAD_MODE_MULTI)) {
         /* TODO: we should let OMPI to fallback to THREAD_SINGLE mode */
         COLL_UCX_ERROR("UCP worker does not support MPI_THREAD_MULTIPLE");
