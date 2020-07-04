@@ -3,6 +3,7 @@
 #
 # Copyright (c) 2011 Mellanox Technologies. All rights reserved.
 # Copyright (c) 2013 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2019 Huawei Technologies Co., Ltd. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -21,6 +22,7 @@ coll_ucx_sources = \
         coll_ucx_op.c \
         coll_ucx_module.c \
         coll_ucx_request.c \
+        coll_ucx_neighbors.c \
         coll_ucx_component.c
 
 # Make the output library in this directory, and name it either

@@ -1,7 +1,7 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2011 Mellanox Technologies. All rights reserved.
  * Copyright (c) 2015 Los Alamos National Security, LLC. All rights reserved.
+ * Copyright (c) 2019 Huawei Technologies Co., Ltd. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -151,7 +151,7 @@ static int mca_coll_ucx_send_worker_address_type(int addr_flags, int modex_scope
                           UCP_WORKER_ATTR_FIELD_ADDRESS_FLAGS;
     attrs.address_flags = addr_flags;
 
-    status = ucp_worker_query(mca_coll_ucx_component.ucg_worker, &attrs);
+    status = ucp_worker_query(mca_coll_ucx_component.ucp_worker, &attrs);
     if (UCS_OK != status) {
         COLL_UCX_ERROR("Failed to query UCP worker address");
         return OMPI_ERROR;
@@ -160,7 +160,7 @@ static int mca_coll_ucx_send_worker_address_type(int addr_flags, int modex_scope
     OPAL_MODEX_SEND(rc, modex_scope, &mca_coll_ucx_component.super.collm_version,
                     (void*)attrs.address, attrs.address_length);
 
-    ucp_worker_release_address(mca_coll_ucx_component.ucg_worker, attrs.address);
+    ucp_worker_release_address(mca_coll_ucx_component.ucp_worker, attrs.address);
 
     if (OMPI_SUCCESS != rc) {
         return OMPI_ERROR;
@@ -239,10 +239,34 @@ static int mca_coll_ucx_recv_worker_address(ompi_proc_t *proc,
     return ret;
 }
 
+static int mca_coll_ucg_is_dtype_int(ompi_datatype_t *dtype)
+{
+    /* TODO: what about signed/unsigned? */
+    return (dtype->super.flags & OMPI_DATATYPE_FLAG_DATA_INT);
+}
+
+static int mca_coll_ucg_is_dtype_fp(ompi_datatype_t *dtype)
+{
+    return (dtype->super.flags & OMPI_DATATYPE_FLAG_DATA_FLOAT);
+}
+
+static int mca_coll_ucg_is_op_sum(ompi_op_t *op)
+{
+    return (op == &ompi_mpi_op_sum.op);
+}
+
+static int mca_coll_ucg_is_op_loc(ompi_op_t *op)
+{
+    return ((op == &ompi_mpi_op_minloc.op) ||
+            (op == &ompi_mpi_op_maxloc.op));
+}
+
 int mca_coll_ucx_open(void)
 {
-    ucg_context_attr_t attr;
-    ucg_params_t params;
+    ucp_context_attr_t attr;
+    ucp_context_h ucp_context;
+    ucp_params_t ucp_params;
+    ucg_params_t ucg_params;
     ucg_config_t *config;
     ucs_status_t status;
 
@@ -254,31 +278,52 @@ int mca_coll_ucx_open(void)
         return OMPI_ERROR;
     }
 
-    /* Initialize UCX context */
-    params.field_mask        = UCP_PARAM_FIELD_FEATURES |
-                               UCP_PARAM_FIELD_REQUEST_SIZE |
-                               UCP_PARAM_FIELD_REQUEST_INIT |
-                               UCP_PARAM_FIELD_REQUEST_CLEANUP |
-                               // UCP_PARAM_FIELD_TAG_SENDER_MASK |
-                               UCP_PARAM_FIELD_MT_WORKERS_SHARED |
-                               UCP_PARAM_FIELD_ESTIMATED_NUM_EPS |
-                               UCP_PARAM_FIELD_LOCAL_PEER_INFO;
-    params.features          = UCP_FEATURE_TAG |
-                               UCP_FEATURE_RMA |
-                               UCP_FEATURE_AMO32 |
-                               UCP_FEATURE_AMO64 |
-                               UCP_FEATURE_GROUPS;
-    params.request_size      = sizeof(ompi_request_t);
-    params.request_init      = mca_coll_ucx_request_init;
-    params.request_cleanup   = mca_coll_ucx_request_cleanup;
-    //params.tag_sender_mask = COLL_UCX_SPECIFIC_SOURCE_MASK;
-    params.mt_workers_shared = 0; /* we do not need mt support for context
-                                     since it will be protected by worker */
-    params.estimated_num_eps = ompi_proc_world_size();
-    params.my_local_peer_idx = ompi_process_info.my_local_rank;
-    params.num_local_peers   = ompi_process_info.num_local_peers + 1;
+    /* Initialize UCP context parameters */
+    ucp_params.field_mask           = UCP_PARAM_FIELD_FEATURES          |
+                                      UCP_PARAM_FIELD_ESTIMATED_NUM_EPS |
+                                      UCP_PARAM_FIELD_GROUP_PEER_INFO;
+    ucp_params.features             = UCP_FEATURE_RMA   |
+                                      UCP_FEATURE_AMO32 |
+                                      UCP_FEATURE_AMO64 |
+                                      UCP_FEATURE_GROUPS;
+    ucp_params.estimated_num_eps    = ompi_process_info.myprocid.rank;
+    ucp_params.peer_info.num_local  = ompi_process_info.num_local_peers + 1;
+    ucp_params.peer_info.local_idx  = ompi_process_info.my_local_rank;
+    ucp_params.peer_info.num_global = ompi_process_info.num_procs;
+    ucp_params.peer_info.global_idx = ompi_process_info.myprocid.rank;
 
-    status = ucg_init(&params, config, &mca_coll_ucx_component.ucg_context);
+    /* Initialize UCG context parameters */
+    ucg_params.super                    = &ucp_params;
+    ucg_params.field_mask               = UCG_PARAM_FIELD_JOB_UID      |
+                                          UCG_PARAM_FIELD_ADDRESS_CB   |
+                                          UCG_PARAM_FIELD_NEIGHBORS_CB |
+                                          UCG_PARAM_FIELD_REDUCE_CB    |
+                                          UCG_PARAM_FIELD_TYPE_INFO_CB |
+                                          UCG_PARAM_FIELD_MPI_IN_PLACE |
+                                          UCG_PARAM_FIELD_HANDLE_FAULT;
+    ucg_params.job_uid                  = ompi_process_info.my_name.jobid;
+    ucg_params.address.lookup_f         = (typeof(ucg_params.address.lookup_f))
+                                          mca_coll_ucx_resolve_address;
+    ucg_params.address.release_f        = (typeof(ucg_params.address.release_f))
+                                          mca_coll_ucx_release_address;
+    ucg_params.neighbors.vertex_count_f = (typeof(ucg_params.neighbors.vertex_count_f))
+                                          mca_coll_ucx_neighbors_count;
+    ucg_params.neighbors.vertex_query_f = (typeof(ucg_params.neighbors.vertex_query_f))
+                                          mca_coll_ucx_neighbors_query;
+    ucg_params.mpi_reduce_f             = (typeof(ucg_params.mpi_reduce_f))
+                                          ompi_op_reduce;
+    ucg_params.mpi_in_place             = (void*)MPI_IN_PLACE;
+    ucg_params.type_info.mpi_is_int_f   = (typeof(ucg_params.type_info.mpi_is_int_f))
+                                          mca_coll_ucg_is_dtype_int;
+    ucg_params.type_info.mpi_is_fp_f    = (typeof(ucg_params.type_info.mpi_is_fp_f))
+                                          mca_coll_ucg_is_dtype_fp;
+    ucg_params.type_info.mpi_is_sum_f   = (typeof(ucg_params.type_info.mpi_is_sum_f))
+                                          mca_coll_ucg_is_op_sum;
+    ucg_params.type_info.mpi_is_loc_f   = (typeof(ucg_params.type_info.mpi_is_loc_f))
+                                          mca_coll_ucg_is_op_loc;
+    ucg_params.fault.mode               = UCG_FAULT_IS_FATAL;
+
+    status = ucg_init(&ucg_params, config, &mca_coll_ucx_component.ucg_context);
     ucg_config_release(config);
 
     if (UCS_OK != status) {
@@ -287,7 +332,8 @@ int mca_coll_ucx_open(void)
 
     /* Query UCX attributes */
     attr.field_mask = UCP_ATTR_FIELD_REQUEST_SIZE;
-    status = ucg_context_query(mca_coll_ucx_component.ucg_context, &attr);
+    ucp_context = ucg_context_get_ucp(mca_coll_ucx_component.ucg_context);
+    status = ucp_context_query(ucp_context, &attr);
     if (UCS_OK != status) {
        goto out;
     }
@@ -312,9 +358,9 @@ int mca_coll_ucx_close(void)
 {
     COLL_UCX_VERBOSE(1, "mca_coll_ucx_close");
 
-    if (mca_coll_ucx_component.ucg_worker != NULL) {
+    if (mca_coll_ucx_component.ucp_worker != NULL) {
        mca_coll_ucx_cleanup();
-       mca_coll_ucx_component.ucg_worker = NULL;
+       mca_coll_ucx_component.ucp_worker = NULL;
     }
 
     if (mca_coll_ucx_component.ucg_context != NULL) {
@@ -335,24 +381,23 @@ int mca_coll_ucx_progress(void)
 
 int mca_coll_ucx_init(void)
 {
-    ucg_worker_params_t params;
-    ucg_worker_attr_t attr;
+    ucp_context_h ucp_context = ucg_context_get_ucp(mca_coll_ucx_component.ucg_context);
+    ucp_worker_params_t params;
+    ucp_worker_attr_t attr;
     ucs_status_t status;
     int rc;
 
     COLL_UCX_VERBOSE(1, "mca_coll_ucx_init");
 
     /* TODO check MPI thread mode */
-    params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-    params.thread_mode = UCS_THREAD_MODE_SINGLE;
+    params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
     if (ompi_mpi_thread_multiple) {
         params.thread_mode = UCS_THREAD_MODE_MULTI;
     } else {
         params.thread_mode = UCS_THREAD_MODE_SINGLE;
     }
 
-    status = ucg_worker_create(mca_coll_ucx_component.ucg_context, &params,
-                               &mca_coll_ucx_component.ucg_worker);
+    status = ucp_worker_create(ucp_context, &params, &mca_coll_ucx_component.ucp_worker);
     if (UCS_OK != status) {
         COLL_UCX_ERROR("Failed to create UCP worker");
         rc = OMPI_ERROR;
@@ -360,7 +405,7 @@ int mca_coll_ucx_init(void)
     }
 
     attr.field_mask = UCP_WORKER_ATTR_FIELD_THREAD_MODE;
-    status = ucg_worker_query(mca_coll_ucx_component.ucg_worker, &attr);
+    status = ucp_worker_query(mca_coll_ucx_component.ucp_worker, &attr);
     if (UCS_OK != status) {
         COLL_UCX_ERROR("Failed to query UCP worker thread level");
         rc = OMPI_ERROR;
@@ -392,12 +437,12 @@ int mca_coll_ucx_init(void)
 
     COLL_UCX_VERBOSE(2, "created ucp context %p, worker %p",
                     (void *)mca_coll_ucx_component.ucg_context,
-                    (void *)mca_coll_ucx_component.ucg_worker);
+                    (void *)mca_coll_ucx_component.ucp_worker);
     return rc;
 
 err_destroy_worker:
-    ucg_worker_destroy(mca_coll_ucx_component.ucg_worker);
-    mca_coll_ucx_component.ucg_worker = NULL;
+    ucp_worker_destroy(mca_coll_ucx_component.ucp_worker);
+    mca_coll_ucx_component.ucp_worker = NULL;
 err:
     return OMPI_ERROR;
 }
@@ -413,49 +458,53 @@ void mca_coll_ucx_cleanup(void)
     OBJ_DESTRUCT(&mca_coll_ucx_component.completed_send_req);
     OBJ_DESTRUCT(&mca_coll_ucx_component.persistent_ops);
 
-    if (mca_coll_ucx_component.ucg_worker) {
-        ucg_worker_destroy(mca_coll_ucx_component.ucg_worker);
-        mca_coll_ucx_component.ucg_worker = NULL;
+    if (mca_coll_ucx_component.ucp_worker) {
+        ucp_worker_destroy(mca_coll_ucx_component.ucp_worker);
+        mca_coll_ucx_component.ucp_worker = NULL;
     }
 }
 
-ucs_status_t mca_coll_ucx_resolve_address(void *cb_group_obj,
-        ucg_group_member_index_t rank, ucg_address_t **addr, size_t *addr_len)
+int mca_coll_ucx_resolve_address(void *cb_group_obj,
+                                 ucg_group_member_index_t rank,
+                                 ucp_address_t **addr,
+                                 size_t *addr_len)
 {
     /* Sanity checks */
     ompi_communicator_t* comm = (ompi_communicator_t*)cb_group_obj;
     if (rank == (ucg_group_member_index_t)comm->c_my_rank) {
-        return UCS_ERR_UNSUPPORTED; // TODO: return "self" endpoint?
+        COLL_UCX_ERROR("mca_coll_ucx_resolve_address(rank=%lu)"
+                       "shouldn't be called on its own rank (loopback)", rank);
+        return 1;
     }
 
     /* Check the cache for a previously established connection to that rank */
     ompi_proc_t *proc_peer =
           (struct ompi_proc_t*)ompi_comm_peer_lookup((ompi_communicator_t*)cb_group_obj, rank);
     *addr = proc_peer->proc_endpoints[OMPI_PROC_ENDPOINT_TAG_COLL];
-    *addr_len = 1; // TODO: fix, also has to be non-zero
+    *addr_len = 0; /* UCX doesn't need the length to unpack the address */
     if (*addr) {
-       return UCS_OK;
+       return 0;
     }
 
     /* Obtain the UCP address of the remote */
     int ret = mca_coll_ucx_recv_worker_address(proc_peer, addr, addr_len);
     if (ret < 0) {
         COLL_UCX_ERROR("mca_coll_ucx_recv_worker_address(proc=%d rank=%lu) failed",
-                    proc_peer->super.proc_name.vpid, rank);
-        return UCS_ERR_INVALID_ADDR;
+                       proc_peer->super.proc_name.vpid, rank);
+        return 1;
     }
 
     /* Cache the connection for future invocations with this rank */
     proc_peer->proc_endpoints[OMPI_PROC_ENDPOINT_TAG_COLL] = *addr;
-    return UCS_OK;
+    return 0;
 }
 
-void mca_coll_ucx_release_address(ucg_address_t *addr)
+void mca_coll_ucx_release_address(ucp_address_t *addr)
 {
     /* no need to free - the address is stored in proc_peer->proc_endpoints */
 }
 
-ucg_worker_h mca_coll_ucx_get_component_worker()
+ucp_worker_h mca_coll_ucx_get_component_worker()
 {
-    return mca_coll_ucx_component.ucg_worker;
+    return mca_coll_ucx_component.ucp_worker;
 }

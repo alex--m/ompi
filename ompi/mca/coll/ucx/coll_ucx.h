@@ -2,6 +2,7 @@
   Copyright (c) 2011      Mellanox Technologies. All rights reserved.
   Copyright (c) 2015      Research Organization for Information Science
                           and Technology (RIST). All rights reserved.
+  Copyright (c) 2019      Huawei Technologies Co., Ltd. All rights reserved.
   $COPYRIGHT$
 
   Additional copyrights may follow
@@ -51,7 +52,7 @@ typedef struct mca_coll_ucx_component {
 
     /* UCX global objects */
     ucg_context_h             ucg_context;
-    ucg_worker_h              ucg_worker;
+    ucp_worker_h              ucp_worker;
     int                       output;
     ucs_list_link_t           group_head;
 
@@ -86,7 +87,7 @@ int  mca_coll_ucx_progress(void);
 /*
  * TESTING PURPOSES: get the worker from the module.
  */
-ucg_worker_h mca_coll_ucx_get_component_worker(void);
+ucp_worker_h mca_coll_ucx_get_component_worker(void);
 
 /*
  * Start persistent collectives from an array of requests.
@@ -96,13 +97,21 @@ int mca_coll_ucx_start(size_t count, ompi_request_t** requests);
 /*
  * Obtain the address for a remote node.
  */
-ucs_status_t mca_coll_ucx_resolve_address(void *cb_group_obj,
-        ucg_group_member_index_t idx, ucg_address_t **addr, size_t *addr_len);
+int mca_coll_ucx_resolve_address(void *cb_group_obj,
+                                 ucg_group_member_index_t idx,
+                                 ucp_address_t **addr, size_t *addr_len);
 
 /*
  * Release an obtained address for a remote node.
  */
-void mca_coll_ucx_release_address(ucg_address_t *addr);
+void mca_coll_ucx_release_address(ucp_address_t *addr);
+
+int mca_coll_ucx_neighbors_count(ompi_communicator_t *comm,
+                                 int *indegree, int *outdegree);
+
+int mca_coll_ucx_neighbors_query(ompi_communicator_t *comm,
+                                 int *sources, int *destinations);
+
 
 /*
  * The collective operations themselves.
@@ -121,6 +130,7 @@ int mca_coll_ucx_iallreduce(const void *sbuf, void *rbuf, int count,
                             struct ompi_request_t **request,
                             mca_coll_base_module_t *module);
 
+/*
 int mca_coll_ucx_allreduce_init(const void *sbuf, void *rbuf, int count,
                                 struct ompi_datatype_t *dtype,
                                 struct ompi_op_t *op,
@@ -128,6 +138,7 @@ int mca_coll_ucx_allreduce_init(const void *sbuf, void *rbuf, int count,
                                 struct ompi_info_t *info,
                                 struct ompi_request_t **request,
                                 mca_coll_base_module_t *module);
+*/
 
 int mca_coll_ucx_bcast(void *buff, int count, struct ompi_datatype_t *datatype,
                        int root, struct ompi_communicator_t *comm,
@@ -143,10 +154,20 @@ int mca_coll_ucx_scatter(const void *sbuf, int scount, struct ompi_datatype_t *s
                          int root, struct ompi_communicator_t *comm,
                          mca_coll_base_module_t *module);
 
+int mca_coll_ucx_scatterv(const void *sbuf, const int *scounts, const int *sdispls, struct ompi_datatype_t *sdtype,
+                                void *rbuf,       int  rcount,                      struct ompi_datatype_t *rdtype,
+                          int root, struct ompi_communicator_t *comm,
+                          mca_coll_base_module_t *module);
+
 int mca_coll_ucx_gather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
                               void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
                         int root, struct ompi_communicator_t *comm,
                         mca_coll_base_module_t *module);
+
+int mca_coll_ucx_gatherv(const void *sbuf,       int  scount,                      struct ompi_datatype_t *sdtype,
+                               void *rbuf, const int *rcounts, const int *rdispls, struct ompi_datatype_t *rdtype,
+                         int root, struct ompi_communicator_t *comm,
+                         mca_coll_base_module_t *module);
 
 int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
                                  void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
