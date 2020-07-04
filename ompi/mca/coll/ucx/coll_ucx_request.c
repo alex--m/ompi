@@ -1,8 +1,8 @@
 /*
- * Copyright (C) Mellanox Technologies Ltd. 2001-2011.  ALL RIGHTS RESERVED.
- * Copyright (c) 2016      The University of Tennessee and The University
- *                         of Tennessee Research Foundation.  All rights
- *                         reserved.
+ * Copyright (C) 2001 Mellanox Technologies Ltd.  ALL RIGHTS RESERVED.
+ * Copyright (c) 2016 The University of Tennessee and The University of
+ *                    Tennessee Research Foundation.  All rights reserved.
+ * Copyright (c) 2019 Huawei Technologies Co., Ltd. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,14 +23,14 @@ static int mca_coll_ucx_request_free(ompi_request_t **rptr)
 
     *rptr = MPI_REQUEST_NULL;
     mca_coll_ucx_request_reset(req);
-    ucg_request_free(req);
+    // ucg_request_free(req);
     return OMPI_SUCCESS;
 }
 
 static int mca_coll_ucx_request_cancel(ompi_request_t *req, int flag)
 {
-    ucg_request_cancel(mca_coll_ucx_component.ucg_worker, req);
-    return OMPI_SUCCESS;
+    // TODO: ucg_request_cancel(mca_coll_ucx_component.ucg_worker, req);
+    return OMPI_ERR_NOT_IMPLEMENTED;
 }
 
 void mca_coll_ucx_coll_completion(void *request, ucs_status_t status)
@@ -59,7 +59,7 @@ mca_coll_ucx_persistent_op_complete(mca_coll_ucx_persistent_op_t *preq,
     preq->ompi.req_status = tmp_req->req_status;
     mca_coll_ucx_request_reset(tmp_req);
     mca_coll_ucx_persistent_op_detach(preq, tmp_req);
-    ucg_request_free(tmp_req);
+    // ucg_request_free(tmp_req);
     ompi_request_complete(&preq->ompi, true);
 }
 
@@ -131,7 +131,7 @@ static int mca_coll_ucx_persistent_op_free(ompi_request_t **rptr)
     preq->ompi.req_state = OMPI_REQUEST_INVALID;
     if (tmp_req != NULL) {
         mca_coll_ucx_persistent_op_detach(preq, tmp_req);
-        ucg_request_free(tmp_req);
+        // ucg_request_free(tmp_req);
     }
 
     COLL_UCX_FREELIST_RETURN(&mca_coll_ucx_component.persistent_ops, &preq->ompi.super);
@@ -144,9 +144,9 @@ static int mca_coll_ucx_persistent_op_cancel(ompi_request_t *req, int flag)
     mca_coll_ucx_persistent_op_t* preq = (mca_coll_ucx_persistent_op_t*)req;
 
     if (preq->tmp_req != NULL) {
-        ucg_request_cancel(preq->ucg_worker, preq->tmp_req);
+        ucg_request_cancel(preq->group, (ucg_request_t*)preq->tmp_req); // TODO: fix request
     }
-    return OMPI_SUCCESS;
+    return OMPI_ERR_NOT_IMPLEMENTED;
 }
 
 static void mca_coll_ucx_persisternt_op_construct(mca_coll_ucx_persistent_op_t* req)

@@ -1,14 +1,15 @@
 /*
- * Copyright (C) Mellanox Technologies Ltd. 2001-2015.  ALL RIGHTS RESERVED.
- * Copyright (c) 2016      The University of Tennessee and The University
- *                         of Tennessee Research Foundation.  All rights
- *                         reserved.
+ * Copyright (C) 2001 Mellanox Technologies Ltd.  ALL RIGHTS RESERVED.
+ * Copyright (c) 2016 The University of Tennessee and The University of
+ *                    Tennessee Research Foundation.  All rights reserved.
+ * Copyright (c) 2019 Huawei Technologies Co., Ltd. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
  *
  * $HEADER$
  */
+
 
 #ifndef COLL_UCX_REQUEST_H_
 #define COLL_UCX_REQUEST_H_
@@ -25,7 +26,8 @@ struct coll_ucx_persistent_op {
     ompi_request_t  ompi;
     ompi_request_t *tmp_req;
     ucg_coll_h      coll_desc;
-    ucg_worker_h    ucg_worker;
+    ucp_worker_h    ucp_worker;
+    ucg_group_h     group;
     unsigned        flags;
 };
 

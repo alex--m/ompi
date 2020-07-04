@@ -1,8 +1,8 @@
 /*
- * Copyright (C) Mellanox Technologies Ltd. 2001-2011.  ALL RIGHTS RESERVED.
- * Copyright (c) 2016      The University of Tennessee and The University
- *                         of Tennessee Research Foundation.  All rights
- *                         reserved.
+ * Copyright (C) 2001 Mellanox Technologies Ltd.  ALL RIGHTS RESERVED.
+ * Copyright (c) 2016 The University of Tennessee and The University of
+ *                    Tennessee Research Foundation.  All rights reserved.
+ * Copyright (c) 2019 Huawei Technologies Co., Ltd. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -10,11 +10,46 @@
  * $HEADER$
  */
 
+
 #include "coll_ucx.h"
 #include "coll_ucx_request.h"
 
 #include "ompi/message/message.h"
 #include <inttypes.h>
+
+#define COLL_UCX_START_COMMON(_op_name, _module, ... ) \
+    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)(_module); \
+\
+    ucg_coll_h coll; \
+    ucs_status_t ret = ucg_coll_##_op_name##_init(__VA_ARGS__, \
+                                                  ucx_module->ucg_group, \
+                                                  &coll); \
+    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) { \
+        COLL_UCX_ERROR("ucx " #_op_name " init failed: %s", ucs_status_string(ret)); \
+        return OMPI_ERROR; \
+    } \
+\
+    ret = ucg_collective_start(coll, &ucg_req); \
+    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) { \
+        COLL_UCX_ERROR("ucx " #_op_name " start failed: %s", ucs_status_string(ret)); \
+        return OMPI_ERROR; \
+    } \
+\
+    if (ucs_unlikely(ret == UCS_OK)) { \
+        return OMPI_SUCCESS; \
+    } \
+\
+
+#define COLL_UCX_START_BLOCKING(_op_name, _module, ... ) \
+    ucg_request_t ucg_req; \
+    COLL_UCX_START_COMMON(_op_name, _module, __VA_ARGS__) \
+    MCA_COMMON_UCX_WAIT_LOOP(&ucg_req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG, \
+                             ucx_module->ucg_group, "ucx " #_op_name, \
+                             ucg_collective_destroy(coll));
+
+#define COLL_UCX_START_NONBLOCKING(_op_name, _module, ... ) \
+    ucg_request_t ucg_req; /* TODO: allocate a request on the heap, unlike this or COLL_UCX_REQ_ALLOCA */ \
+    COLL_UCX_START_COMMON(_op_name, _module, __VA_ARGS__)
 
 int mca_coll_ucx_start(size_t count, ompi_request_t** requests)
 {
@@ -33,7 +68,7 @@ int mca_coll_ucx_start(size_t count, ompi_request_t** requests)
         preq->ompi.req_state = OMPI_REQUEST_ACTIVE;
         mca_coll_ucx_request_reset(&preq->ompi);
 
-        tmp_req = ucg_collective_start_nb(preq->coll_desc);
+        tmp_req = NULL; // TODO: ucg_collective_start(preq->coll_desc, ???);
         if (tmp_req == NULL) {
             COLL_UCX_VERBOSE(8, "collective completed immediately, completing persistent request %p",
                     (void*)preq);
@@ -85,81 +120,82 @@ int mca_coll_ucx_start(size_t count, ompi_request_t** requests)
         ((char *)alloca(mca_coll_ucx_component.request_size) + \
                 mca_coll_ucx_component.request_size);
 
+int mca_coll_ucx_barrier(struct ompi_communicator_t *comm,
+        mca_coll_base_module_t *module)
+{
+    COLL_UCX_START_BLOCKING(barrier, module, 0 /* cb */)
+}
+
+static inline int __opal_attribute_always_inline__
+mca_coll_ucx_handle_dtype(struct ompi_datatype_t *dtype, int count, size_t *dtype_size)
+{
+    ptrdiff_t lb;
+    ompi_datatype_get_true_extent(dtype, &lb, (ptrdiff_t*)dtype_size);
+    return (lb == 0) &&
+            opal_datatype_is_contiguous_memory_layout(&dtype->super, count);
+}
+
+int mca_coll_ucx_bcast(void *buff, int count, struct ompi_datatype_t *dtype,
+        int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
+{
+    size_t dtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(dtype, count, &dtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
+    }
+
+    COLL_UCX_START_BLOCKING(bcast, module, buff, buff, count, dtype_size, dtype,
+            0 /* cb */, 0 /* op */, root, 0 /* modifiers */,
+            root == comm->c_my_rank /* am I the root */)
+}
+
+int mca_coll_ucx_reduce(const void *sbuf, void* rbuf, int count,
+                        struct ompi_datatype_t *dtype, struct ompi_op_t *op,
+                        int root, struct ompi_communicator_t *comm,
+                        mca_coll_base_module_t *module)
+{
+    size_t dtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(dtype, count, &dtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
+    }
+
+    COLL_UCX_START_BLOCKING(reduce, module, sbuf, rbuf, count, dtype_size,
+            dtype, 0 /* cb */, op, root, 0 /* modifiers */,
+            root == comm->c_my_rank /* am I the root */)
+    // TODO: potentially pass a "stable reduction" modifier
+}
+
 int mca_coll_ucx_allreduce(const void *sbuf, void *rbuf, int count,
                            struct ompi_datatype_t *dtype, struct ompi_op_t *op,
                            struct ompi_communicator_t *comm,
                            mca_coll_base_module_t *module)
 {
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    COLL_UCX_TRACE("%s", sbuf, rbuf, count, dtype, comm, "allreduce START");
-
-    /* coverity[bad_alloc_arithmetic] */
-    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
-
-    int dtype_size;
-    ucg_coll_h coll;
-    MPI_Type_size(dtype, &dtype_size);
-    ucs_status_t ret = ucg_coll_allreduce_init(sbuf, rbuf, count,
-            dtype_size, dtype, ucx_module->ucg_group, 0,
-            op, 0, 0, &coll);
-    if (OPAL_UNLIKELY(ret != UCS_OK)) {
-        COLL_UCX_ERROR("ucx allreduce init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
+    size_t dtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(dtype, count, &dtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
     }
 
-    ret = ucg_collective_start_nbr(coll, req);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx allreduce start failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    if (ucs_unlikely(ret == UCS_OK)) {
-        return OMPI_SUCCESS;
-    }
-
-    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
-            ucx_module->ucg_group, "ucx allreduce", (void)0);
-    COLL_UCX_TRACE("%s", sbuf, rbuf, count, dtype, comm, "allreduce END");
+    COLL_UCX_START_BLOCKING(allreduce, module, sbuf, rbuf, count, dtype_size,
+            dtype, 0 /* cb */, op, 0 /* root */, 0 /* modifiers */)
+    // TODO: potentially pass a "stable reduction" modifier
 }
 
+
+/* This is just a placeholder - not working yet....
 int mca_coll_ucx_iallreduce(const void *sbuf, void *rbuf, int count,
                             struct ompi_datatype_t *dtype, struct ompi_op_t *op,
                             struct ompi_communicator_t *comm,
                             struct ompi_request_t **request,
                             mca_coll_base_module_t *module)
 {
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    COLL_UCX_TRACE("iallreduce request *%p", sbuf, rbuf, count, dtype, comm,
-                   (void*)request);
-
-    int dtype_size;
-    ucg_coll_h coll;
-    MPI_Type_size(dtype, &dtype_size);
-    ucs_status_t ret = ucg_coll_allreduce_init(sbuf, rbuf, count,
-            dtype_size, dtype, ucx_module->ucg_group,
-            mca_coll_ucx_coll_completion, op, 0, 0, &coll);
-    if (OPAL_UNLIKELY(ret != UCS_OK)) {
-        COLL_UCX_ERROR("ucx allreduce init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
+    size_t dtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(dtype, count, &dtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
     }
 
-    ompi_request_t *req = (ompi_request_t*)ucg_collective_start_nb(coll);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx allreduce start failed: %s",
-                       ucs_status_string(UCS_PTR_STATUS(req)));
-        return OMPI_ERROR;
-    }
+    COLL_UCX_START_NONBLOCKING(allreduce, module, sbuf, rbuf, count, dtype_size,
+                               dtype, 0, op, 0, 0)
 
-    if (req == NULL) {
-        COLL_UCX_VERBOSE(8, "returning completed request");
-        *request = &mca_coll_ucx_component.completed_send_req;
-        return OMPI_SUCCESS;
-    }
-
-    COLL_UCX_VERBOSE(8, "got request %p", (void*)req);
-    *request = req;
+    *request = ucg_req; // TODO: handle the case where it completed immediately
     return OMPI_SUCCESS;
 }
 
@@ -185,9 +221,9 @@ int mca_coll_ucx_allreduce_init(const void *sbuf, void *rbuf, int count,
     int dtype_size;
     MPI_Type_size(dtype, &dtype_size);
     ucs_status_t ret = ucg_coll_allreduce_init(sbuf, rbuf, count,
-            dtype_size, dtype, ucx_module->ucg_group,
-            mca_coll_ucx_pcoll_completion, op, 0,
-            UCG_GROUP_COLLECTIVE_MODIFIER_PERSISTENT, &req->coll_desc);
+            dtype_size, dtype, mca_coll_ucx_pcoll_completion, op, 0,
+            UCG_GROUP_COLLECTIVE_MODIFIER_PERSISTENT, ucx_module->ucg_group,
+            &req->coll_desc);
     if (OPAL_UNLIKELY(ret != UCS_OK)) {
         COLL_UCX_ERROR("ucx allreduce failed: %s", ucs_status_string(ret));
         return OMPI_ERROR;
@@ -197,80 +233,41 @@ int mca_coll_ucx_allreduce_init(const void *sbuf, void *rbuf, int count,
     *request = &req->ompi;
     return OMPI_SUCCESS;
 }
-
-int mca_coll_ucx_reduce(const void *sbuf, void* rbuf, int count,
-                        struct ompi_datatype_t *dtype, struct ompi_op_t *op,
-                        int root, struct ompi_communicator_t *comm,
-                        mca_coll_base_module_t *module)
-{
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    COLL_UCX_TRACE("%s", sbuf, rbuf, count, dtype, comm, "allreduce");
-
-    /* coverity[bad_alloc_arithmetic] */
-    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
-
-    int dtype_size;
-    ucg_coll_h coll;
-    MPI_Type_size(dtype, &dtype_size);
-    ucs_status_t ret = ucg_coll_reduce_init(sbuf, rbuf, count,
-            dtype_size, dtype, ucx_module->ucg_group, 0,
-            op, root, 0, &coll);
-    if (OPAL_UNLIKELY(ret != UCS_OK)) {
-        COLL_UCX_ERROR("ucx reduce init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    ret = ucg_collective_start_nbr(coll, req);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx reduce start failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    if (ucs_unlikely(ret == UCS_OK)) {
-        return OMPI_SUCCESS;
-    }
-
-    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
-            ucx_module->ucg_group, "ucx reduce", (void)0);
-}
+*/
 
 int mca_coll_ucx_scatter(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
                                void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
                          int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    COLL_UCX_TRACE("%s", sbuf, rbuf, scount, sdtype, comm, "scatter");
-
-    /* coverity[bad_alloc_arithmetic] */
-    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
-
-    ucg_coll_h coll;
-    int sdtype_size, rdtype_size;
-    MPI_Type_size(sdtype, &sdtype_size);
-    MPI_Type_size(rdtype, &rdtype_size);
-    ucs_status_t ret = ucg_coll_scatter_init(sbuf, scount, sdtype_size, sdtype,
-                                             rbuf, rcount, rdtype_size, rdtype,
-                                             ucx_module->ucg_group, 0, 0, root,
-                                             0, &coll);
-    if (OPAL_UNLIKELY(ret != UCS_OK)) {
-        COLL_UCX_ERROR("ucx reduce init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
+    size_t sdtype_size, rdtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(sdtype, scount, &sdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
+    }
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(rdtype, rcount, &rdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
     }
 
-    ret = ucg_collective_start_nbr(coll, req);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx reduce start failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
+    COLL_UCX_START_BLOCKING(scatter, module, sbuf, scount, sdtype_size, sdtype,
+            rbuf, rcount, rdtype_size, rdtype, 0 /* cb */, 0 /* op */, root,
+            0 /* modifiers */, root == comm->c_my_rank /* am I the root */)
+}
+
+int mca_coll_ucx_scatterv(const void *sbuf, const int *scounts, const int *sdispls, struct ompi_datatype_t *sdtype,
+                                void *rbuf,       int  rcount,                      struct ompi_datatype_t *rdtype,
+                          int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
+{
+    size_t sdtype_size, rdtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(sdtype, 2, &sdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
+    }
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(rdtype, rcount, &rdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
     }
 
-    if (ucs_unlikely(ret == UCS_OK)) {
-        return OMPI_SUCCESS;
-    }
-
-    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
-            ucx_module->ucg_group, "ucx scatter", (void)0);
+    COLL_UCX_START_BLOCKING(scatterv, module, sbuf, scounts, sdispls,
+            sdtype_size, sdtype, rbuf, rcount, rdtype_size, rdtype, 0 /* cb */,
+            0 /* op */, root, 0 /* modifiers */,
+            root == comm->c_my_rank /* am I the root */)
 }
 
 int mca_coll_ucx_gather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
@@ -278,38 +275,34 @@ int mca_coll_ucx_gather(const void *sbuf, int scount, struct ompi_datatype_t *sd
                         int root, struct ompi_communicator_t *comm,
                         mca_coll_base_module_t *module)
 {
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    COLL_UCX_TRACE("%s", sbuf, rbuf, scount, sdtype, comm, "gather");
-
-    /* coverity[bad_alloc_arithmetic] */
-    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
-
-    ucg_coll_h coll;
-    int sdtype_size, rdtype_size;
-    MPI_Type_size(sdtype, &sdtype_size);
-    MPI_Type_size(rdtype, &rdtype_size);
-    ucs_status_t ret = ucg_coll_gather_init(sbuf, scount, sdtype_size, sdtype,
-                                            rbuf, rcount, rdtype_size, rdtype,
-                                            ucx_module->ucg_group, 0, 0, root,
-                                            0, &coll);
-    if (OPAL_UNLIKELY(ret != UCS_OK)) {
-        COLL_UCX_ERROR("ucx reduce init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
+    size_t sdtype_size, rdtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(sdtype, scount, &sdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
+    }
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(rdtype, rcount, &rdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
     }
 
-    ret = ucg_collective_start_nbr(coll, req);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx reduce start failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
+    COLL_UCX_START_BLOCKING(gather, module, sbuf, scount, sdtype_size, sdtype,
+            rbuf, rcount, rdtype_size, rdtype, 0 /* cb */, 0 /* op */,
+            0 /* root */, 0 /* modifiers */, root == comm->c_my_rank /* am I the root */)
+}
+
+int mca_coll_ucx_gatherv(const void *sbuf,       int  scount,                      struct ompi_datatype_t *sdtype,
+                               void *rbuf, const int *rcounts, const int *rdispls, struct ompi_datatype_t *rdtype,
+                         int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
+{
+    size_t sdtype_size, rdtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(sdtype, scount, &sdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
+    }
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(rdtype, 2, &rdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
     }
 
-    if (ucs_unlikely(ret == UCS_OK)) {
-        return OMPI_SUCCESS;
-    }
-
-    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
-            ucx_module->ucg_group, "ucx gather", (void)0);
+    COLL_UCX_START_BLOCKING(gatherv, module, sbuf, scount, sdtype_size, sdtype,
+            rbuf, rcounts, rdispls, rdtype_size, rdtype, 0 /* cb */, 0 /* op */,
+            0 /* root */, 0 /* modifiers */, root == comm->c_my_rank /* am I the root */)
 }
 
 int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
@@ -317,38 +310,17 @@ int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t 
                            struct ompi_communicator_t *comm,
                            mca_coll_base_module_t *module)
 {
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    COLL_UCX_TRACE("%s", sbuf, rbuf, scount, sdtype, comm, "allgather");
-
-    /* coverity[bad_alloc_arithmetic] */
-    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
-
-    ucg_coll_h coll;
-    int sdtype_size, rdtype_size;
-    MPI_Type_size(sdtype, &sdtype_size);
-    MPI_Type_size(rdtype, &rdtype_size);
-    ucs_status_t ret = ucg_coll_allgather_init(sbuf, scount, sdtype_size, sdtype,
-                                               rbuf, rcount, rdtype_size, rdtype,
-                                               ucx_module->ucg_group, 0, 0, 0, 0,
-                                               &coll);
-    if (OPAL_UNLIKELY(ret != UCS_OK)) {
-        COLL_UCX_ERROR("ucx allgather init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
+    size_t sdtype_size, rdtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(sdtype, scount, &sdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
+    }
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(rdtype, rcount, &rdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
     }
 
-    ret = ucg_collective_start_nbr(coll, req);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx allgather start failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    if (ucs_unlikely(ret == UCS_OK)) {
-        return OMPI_SUCCESS;
-    }
-
-    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
-            ucx_module->ucg_group, "ucx allgather", (void)0);
+    COLL_UCX_START_BLOCKING(allgather, module, sbuf, scount, sdtype_size,
+            sdtype, rbuf, rcount, rdtype_size, rdtype, 0 /* cb */, 0 /* op */,
+            0 /* root */, 0 /* modifiers */)
 }
 
 int mca_coll_ucx_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
@@ -356,101 +328,15 @@ int mca_coll_ucx_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *
                           struct ompi_communicator_t *comm,
                           mca_coll_base_module_t *module)
 {
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    COLL_UCX_TRACE("%s", sbuf, rbuf, scount, sdtype, comm, "allgather");
-
-    /* coverity[bad_alloc_arithmetic] */
-    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
-
-    ucg_coll_h coll;
-    int sdtype_size, rdtype_size;
-    MPI_Type_size(sdtype, &sdtype_size);
-    MPI_Type_size(rdtype, &rdtype_size);
-    ucs_status_t ret = ucg_coll_alltoall_init(sbuf, scount, sdtype_size, sdtype,
-                                              rbuf, rcount, rdtype_size, rdtype,
-                                              ucx_module->ucg_group, 0, 0, 0, 0,
-                                              &coll);
-    if (OPAL_UNLIKELY(ret != UCS_OK)) {
-        COLL_UCX_ERROR("ucx allgather init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
+    size_t sdtype_size, rdtype_size;
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(sdtype, scount, &sdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
+    }
+    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(rdtype, rcount, &rdtype_size))) {
+        return OMPI_ERR_NOT_SUPPORTED;
     }
 
-    ret = ucg_collective_start_nbr(coll, req);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx allgather start failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    if (ucs_unlikely(ret == UCS_OK)) {
-        return OMPI_SUCCESS;
-    }
-
-    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
-            ucx_module->ucg_group, "ucx alltoall", (void)0);
-}
-
-int mca_coll_ucx_barrier(struct ompi_communicator_t *comm,
-        mca_coll_base_module_t *module)
-{
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    /* coverity[bad_alloc_arithmetic] */
-    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
-
-    ucg_coll_h coll;
-    ucs_status_t ret = ucg_coll_barrier_init(0, ucx_module->ucg_group, 0, 0, 0,
-            0, &coll);
-    if (OPAL_UNLIKELY(ret != UCS_OK)) {
-        COLL_UCX_ERROR("ucx barrier init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    ret = ucg_collective_start_nbr(coll, req);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx barrier start failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    if (ucs_unlikely(ret == UCS_OK)) {
-        return OMPI_SUCCESS;
-    }
-
-    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
-            ucx_module->ucg_group, "ucx barrier", (void)0);
-}
-
-int mca_coll_ucx_bcast(void *buff, int count, struct ompi_datatype_t *dtype,
-        int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
-{
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*)module;
-
-    COLL_UCX_TRACE("%s", buff, buff, count, dtype, comm, "bcast");
-
-    /* coverity[bad_alloc_arithmetic] */
-    ucs_status_ptr_t req = COLL_UCX_REQ_ALLOCA(ucx_module);
-
-    int dtype_size;
-    ucg_coll_h coll;
-    MPI_Type_size(dtype, &dtype_size);
-    ucs_status_t ret = ucg_coll_bcast_init(buff, buff, count,
-            dtype_size, dtype, ucx_module->ucg_group, 0,
-            0, root, 0, &coll);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx bcast init failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    ret = ucg_collective_start_nbr(coll, req);
-    if (OPAL_UNLIKELY(UCS_STATUS_IS_ERR(ret))) {
-        COLL_UCX_ERROR("ucx bcast start failed: %s", ucs_status_string(ret));
-        return OMPI_ERROR;
-    }
-
-    if (ucs_unlikely(ret == UCS_OK)) {
-        return OMPI_SUCCESS;
-    }
-
-    MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCG,
-            ucx_module->ucg_group, "ucx bcast", (void)0);
+    COLL_UCX_START_BLOCKING(alltoall, module, sbuf, scount, sdtype_size, sdtype,
+            rbuf, rcount, rdtype_size, rdtype, 0 /* cb */, 0 /* op */,
+            0 /* root */, 0 /* modifiers */)
 }
