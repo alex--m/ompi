@@ -123,29 +123,34 @@ int mca_coll_ucx_start(size_t count, ompi_request_t** requests)
 int mca_coll_ucx_barrier(struct ompi_communicator_t *comm,
         mca_coll_base_module_t *module)
 {
-    COLL_UCX_START_BLOCKING(barrier, module, 0 /* cb */)
+    COLL_UCX_START_BLOCKING(barrier, module, 0 /* ign */)
 }
 
-static inline int __opal_attribute_always_inline__
-mca_coll_ucx_handle_dtype(struct ompi_datatype_t *dtype, int count, size_t *dtype_size)
+static inline void __opal_attribute_always_inline__
+mca_coll_ucx_handle_dtype(const struct ompi_datatype_t *dtype, int count,
+                          size_t *dtype_size, uint16_t *modifiers)
 {
     ptrdiff_t lb;
     ompi_datatype_get_true_extent(dtype, &lb, (ptrdiff_t*)dtype_size);
-    return (lb == 0) &&
-            opal_datatype_is_contiguous_memory_layout(&dtype->super, count);
+
+    if (ucs_unlikely((!opal_datatype_is_contiguous_memory_layout(&dtype->super,
+                                                                 count)) ||
+                     (lb != 0))) {
+        modifiers |= UCG_GROUP_COLLECTIVE_MODIFIER_NONCONTIG_DATATYPE;
+    }
 }
 
 int mca_coll_ucx_bcast(void *buff, int count, struct ompi_datatype_t *dtype,
         int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     size_t dtype_size;
-    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(dtype, count, &dtype_size))) {
-        return OMPI_ERR_NOT_SUPPORTED;
-    }
+    uint16_t modifiers = 0;
+
+    mca_coll_ucx_handle_dtype(dtype, count, &dtype_size, &modifiers);
 
     COLL_UCX_START_BLOCKING(bcast, module, buff, buff, count, dtype_size, dtype,
-            0 /* cb */, 0 /* op */, root, 0 /* modifiers */,
-            root == comm->c_my_rank /* am I the root */)
+                            0 /* op */, root, modifiers,
+                            root == comm->c_my_rank /* am I the root */)
 }
 
 int mca_coll_ucx_reduce(const void *sbuf, void* rbuf, int count,
@@ -154,14 +159,29 @@ int mca_coll_ucx_reduce(const void *sbuf, void* rbuf, int count,
                         mca_coll_base_module_t *module)
 {
     size_t dtype_size;
-    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(dtype, count, &dtype_size))) {
-        return OMPI_ERR_NOT_SUPPORTED;
-    }
+    uint16_t modifiers = 0;
+
+    mca_coll_ucx_handle_dtype(dtype, count, &dtype_size, &modifiers);
 
     COLL_UCX_START_BLOCKING(reduce, module, sbuf, rbuf, count, dtype_size,
-            dtype, 0 /* cb */, op, root, 0 /* modifiers */,
-            root == comm->c_my_rank /* am I the root */)
-    // TODO: potentially pass a "stable reduction" modifier
+                            dtype, op, root, modifiers,
+                            root == comm->c_my_rank /* am I the root */)
+}
+
+int mca_coll_ucx_reduce_stable(const void *sbuf, void* rbuf, int count,
+                               struct ompi_datatype_t *dtype,
+                               struct ompi_op_t *op, int root,
+                               struct ompi_communicator_t *comm,
+                               mca_coll_base_module_t *module)
+{
+    size_t dtype_size;
+    uint16_t modifiers = UCG_GROUP_COLLECTIVE_MODIFIER_NONCONTIG_DATATYPE;
+
+    mca_coll_ucx_handle_dtype(dtype, count, &dtype_size, &modifiers);
+
+    COLL_UCX_START_BLOCKING(reduce, module, sbuf, rbuf, count, dtype_size,
+                            dtype, op, root, modifiers,
+                            root == comm->c_my_rank /* am I the root */)
 }
 
 int mca_coll_ucx_allreduce(const void *sbuf, void *rbuf, int count,
@@ -170,13 +190,27 @@ int mca_coll_ucx_allreduce(const void *sbuf, void *rbuf, int count,
                            mca_coll_base_module_t *module)
 {
     size_t dtype_size;
-    if (ucs_unlikely(!mca_coll_ucx_handle_dtype(dtype, count, &dtype_size))) {
-        return OMPI_ERR_NOT_SUPPORTED;
-    }
+    uint16_t modifiers = 0;
+
+    mca_coll_ucx_handle_dtype(dtype, count, &dtype_size, &modifiers);
 
     COLL_UCX_START_BLOCKING(allreduce, module, sbuf, rbuf, count, dtype_size,
-            dtype, 0 /* cb */, op, 0 /* root */, 0 /* modifiers */)
-    // TODO: potentially pass a "stable reduction" modifier
+                            dtype, op, 0 /* root */, modifiers)
+}
+
+int mca_coll_ucx_allreduce_stable(const void *sbuf, void *rbuf, int count,
+                                  struct ompi_datatype_t *dtype,
+                                  struct ompi_op_t *op,
+                                  struct ompi_communicator_t *comm,
+                                  mca_coll_base_module_t *module)
+{
+    size_t dtype_size;
+    uint16_t modifiers = UCG_GROUP_COLLECTIVE_MODIFIER_NONCONTIG_DATATYPE;
+
+    mca_coll_ucx_handle_dtype(dtype, count, &dtype_size, &modifiers);
+
+    COLL_UCX_START_BLOCKING(allreduce, module, sbuf, rbuf, count, dtype_size,
+                            dtype, op, 0 /* root */, modifiers)
 }
 
 
@@ -239,6 +273,10 @@ int mca_coll_ucx_scatter(const void *sbuf, int scount, struct ompi_datatype_t *s
                                void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
                          int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
+    uint16_t modifiers = 0;
+
+    mca_coll_ucx_handle_dtype(dtype, count, &dtype_size, &modifiers);
+
     size_t sdtype_size, rdtype_size;
     if (ucs_unlikely(!mca_coll_ucx_handle_dtype(sdtype, scount, &sdtype_size))) {
         return OMPI_ERR_NOT_SUPPORTED;
@@ -248,7 +286,7 @@ int mca_coll_ucx_scatter(const void *sbuf, int scount, struct ompi_datatype_t *s
     }
 
     COLL_UCX_START_BLOCKING(scatter, module, sbuf, scount, sdtype_size, sdtype,
-            rbuf, rcount, rdtype_size, rdtype, 0 /* cb */, 0 /* op */, root,
+            rbuf, rcount, rdtype_size, rdtype, 0 /* op */, root,
             0 /* modifiers */, root == comm->c_my_rank /* am I the root */)
 }
 
@@ -265,7 +303,7 @@ int mca_coll_ucx_scatterv(const void *sbuf, const int *scounts, const int *sdisp
     }
 
     COLL_UCX_START_BLOCKING(scatterv, module, sbuf, scounts, sdispls,
-            sdtype_size, sdtype, rbuf, rcount, rdtype_size, rdtype, 0 /* cb */,
+            sdtype_size, sdtype, rbuf, rcount, rdtype_size, rdtype,
             0 /* op */, root, 0 /* modifiers */,
             root == comm->c_my_rank /* am I the root */)
 }
@@ -284,7 +322,7 @@ int mca_coll_ucx_gather(const void *sbuf, int scount, struct ompi_datatype_t *sd
     }
 
     COLL_UCX_START_BLOCKING(gather, module, sbuf, scount, sdtype_size, sdtype,
-            rbuf, rcount, rdtype_size, rdtype, 0 /* cb */, 0 /* op */,
+            rbuf, rcount, rdtype_size, rdtype, 0 /* op */,
             0 /* root */, 0 /* modifiers */, root == comm->c_my_rank /* am I the root */)
 }
 
@@ -301,7 +339,7 @@ int mca_coll_ucx_gatherv(const void *sbuf,       int  scount,                   
     }
 
     COLL_UCX_START_BLOCKING(gatherv, module, sbuf, scount, sdtype_size, sdtype,
-            rbuf, rcounts, rdispls, rdtype_size, rdtype, 0 /* cb */, 0 /* op */,
+            rbuf, rcounts, rdispls, rdtype_size, rdtype, 0 /* op */,
             0 /* root */, 0 /* modifiers */, root == comm->c_my_rank /* am I the root */)
 }
 
@@ -319,7 +357,7 @@ int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t 
     }
 
     COLL_UCX_START_BLOCKING(allgather, module, sbuf, scount, sdtype_size,
-            sdtype, rbuf, rcount, rdtype_size, rdtype, 0 /* cb */, 0 /* op */,
+            sdtype, rbuf, rcount, rdtype_size, rdtype, 0 /* op */,
             0 /* root */, 0 /* modifiers */)
 }
 
@@ -337,6 +375,6 @@ int mca_coll_ucx_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *
     }
 
     COLL_UCX_START_BLOCKING(alltoall, module, sbuf, scount, sdtype_size, sdtype,
-            rbuf, rcount, rdtype_size, rdtype, 0 /* cb */, 0 /* op */,
+            rbuf, rcount, rdtype_size, rdtype, 0 /* op */,
             0 /* root */, 0 /* modifiers */)
 }

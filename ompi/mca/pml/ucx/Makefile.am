@@ -21,9 +21,6 @@ local_sources = \
         pml_ucx.c \
         pml_ucx_request.h \
         pml_ucx_request.c \
-        pml_ucx_datatype.h \
-        pml_ucx_datatype.c \
-        pml_ucx_freelist.h \
         pml_ucx_component.c
 
 if MCA_BUILD_ompi_pml_ucx_DSO

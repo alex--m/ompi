@@ -28,7 +28,8 @@ opal_common_ucx_module_t opal_common_ucx = {
     .verbose             = 0,
     .progress_iterations = 100,
     .registered          = 0,
-    .opal_mem_hooks      = 0
+    .opal_mem_hooks      = 0,
+    .first_version       = NULL
 };
 
 static void opal_common_ucx_mem_release_cb(void *buf, size_t length,
@@ -277,3 +278,273 @@ OPAL_DECLSPEC int opal_common_ucx_del_procs(opal_common_ucx_del_proc_t *procs, s
     return opal_common_ucx_mca_pmix_fence(worker);
 }
 
+
+#if HAVE_UCP_WORKER_ADDRESS_FLAGS
+static int opal_common_ucx_send_worker_address_type(mca_base_component_t *version,
+                                                    int addr_flags, int modex_scope)
+{
+    ucs_status_t status;
+    ucp_worker_attr_t attrs;
+    int rc;
+
+    attrs.field_mask    = UCP_WORKER_ATTR_FIELD_ADDRESS |
+                          UCP_WORKER_ATTR_FIELD_ADDRESS_FLAGS;
+    attrs.address_flags = addr_flags;
+
+    status = ucp_worker_query(opal_common_ucx.ucp_worker, &attrs);
+    if (UCS_OK != status) {
+        MCA_COMMON_UCX_ERROR("Failed to query UCP worker address");
+        return OPAL_ERROR;
+    }
+
+    OPAL_MODEX_SEND(rc, modex_scope, version, (void*)attrs.address, attrs.address_length);
+
+    ucp_worker_release_address(opal_common_ucx.ucp_worker, attrs.address);
+
+    if (OPAL_SUCCESS != rc) {
+        return OPAL_ERROR;
+    }
+
+    MCA_COMMON_UCX_VERBOSE(2, "Pack %s worker address, size %ld",
+                    (modex_scope == PMIX_LOCAL) ? "local" : "remote",
+                    attrs.address_length);
+
+    return OPAL_SUCCESS;
+}
+#endif
+
+static int opal_common_ucx_send_worker_address(mca_base_component_t *version)
+{
+    ucs_status_t status;
+
+#if !HAVE_UCP_WORKER_ADDRESS_FLAGS
+    ucp_address_t *address;
+    size_t addrlen;
+    int rc;
+
+    status = ucp_worker_get_address(opal_common_ucx.ucp_worker, &address, &addrlen);
+    if (UCS_OK != status) {
+        MCA_COMMON_UCX_ERROR("Failed to get worker address");
+        return OPAL_ERROR;
+    }
+
+    MCA_COMMON_UCX_VERBOSE(2, "Pack worker address, size %ld", addrlen);
+
+    OPAL_MODEX_SEND(rc, PMIX_GLOBAL, version, (void*)address, addrlen);
+
+    ucp_worker_release_address(opal_common_ucx.ucp_worker, address);
+
+    if (OPAL_SUCCESS != rc) {
+        goto err;
+    }
+#else
+    /* Pack just network device addresses for remote node peers */
+    status = opal_common_ucx_send_worker_address_type(version,
+                                                      UCP_WORKER_ADDRESS_FLAG_NET_ONLY,
+                                                      PMIX_REMOTE);
+    if (UCS_OK != status) {
+        goto err;
+    }
+
+    status = opal_common_ucx_send_worker_address_type(version, 0, PMIX_LOCAL);
+    if (UCS_OK != status) {
+        goto err;
+    }
+#endif
+
+    return OPAL_SUCCESS;
+
+err:
+    MCA_COMMON_UCX_ERROR("Open MPI couldn't distribute EP connection details");
+    return OPAL_ERROR;
+}
+
+int opal_common_ucx_recv_worker_address(mca_base_component_t *version,
+                                        opal_process_name_t *proc_name,
+                                        ucp_address_t **address_p,
+                                        size_t *addrlen_p)
+{
+    int ret;
+
+    *address_p = NULL;
+    OPAL_MODEX_RECV(ret, version, proc_name, (void**)address_p, addrlen_p);
+    if (ret < 0) {
+        MCA_COMMON_UCX_ERROR("Failed to receive UCX worker address: %s (%d)",
+                      opal_strerror(ret), ret);
+    }
+
+    return ret;
+}
+
+int opal_common_ucx_open(const char *prefix,
+#ifdef HAVE_UCG
+                         const ucg_params_t *ucg_params,
+#else
+                         const ucp_params_t *ucp_params,
+#endif
+                         opal_object_t *datatype_ctx,
+                         size_t *request_size)
+{
+    ucp_context_attr_t attr;
+    ucs_status_t status;
+
+    MCA_COMMON_UCX_VERBOSE(1, "opal_common_ucx_open");
+
+    if (is_first_run)
+
+#ifdef HAVE_UCG
+    ucg_config_t *config;
+    status = ucg_config_read(prefix, NULL, &config);
+    if (UCS_OK != status) {
+        return OPAL_ERROR;
+    }
+
+    status = ucg_init(ucg_params, config, &opal_common_ucx.ucg_context);
+    if (UCS_OK != status) {
+        opal_common_ucx.ucp_context =
+                ucg_context_get_ucp(opal_common_ucx.ucg_context);
+    }
+    ucg_config_release(config);
+#else
+    ucp_config_t *config;
+    status = ucp_config_read("MPI", NULL, &config);
+    if (UCS_OK != status) {
+        return OPAL_ERROR;
+    }
+
+    status = ucp_init(&ucp_params, config, &opal_common_ucx.ucp_context);
+    ucp_config_release(config);
+#endif
+
+    if (UCS_OK != status) {
+        return OPAL_ERROR;
+    }
+
+
+    if (opal_obj_new(datatype_ctx)!!!
+
+    /* Query UCX attributes */
+    attr.field_mask  = UCP_ATTR_FIELD_REQUEST_SIZE;
+#if HAVE_UCP_ATTR_MEMORY_TYPES
+    attr.field_mask |= UCP_ATTR_FIELD_MEMORY_TYPES;
+#endif
+    status = ucp_context_query(opal_common_ucx.ucp_context, &attr);
+    if (UCS_OK != status) {
+        ucp_cleanup(opal_common_ucx.ucp_context);
+        opal_common_ucx.ucp_context = NULL;
+        return OPAL_ERROR;
+    }
+
+    opal_common_ucx.cuda_initialized = false;
+#if HAVE_UCP_ATTR_MEMORY_TYPES && OPAL_CUDA_SUPPORT
+    if (attr.memory_types & UCS_BIT(UCS_MEMORY_TYPE_CUDA)) {
+        mca_common_cuda_stage_one_init();
+        opal_common_ucx.cuda_initialized = true;
+    }
+#endif
+
+    *request_size = attr.request_size;
+
+    return OPAL_SUCCESS;
+}
+
+int opal_common_ucx_close(void)
+{
+    MCA_COMMON_UCX_VERBOSE(1, "opal_common_ucx_close");
+
+#if OPAL_CUDA_SUPPORT
+    if (opal_common_ucx.cuda_initialized) {
+        mca_common_cuda_fini();
+    }
+#endif
+    if (opal_common_ucx.ucp_context != NULL) {
+        ucp_cleanup(opal_common_ucx.ucp_context);
+        opal_common_ucx.ucp_context = NULL;
+    }
+    return OPAL_SUCCESS;
+}
+
+static int opal_common_ucx_init_worker(int enable_mpi_threads)
+{
+    ucp_worker_params_t params;
+    ucp_worker_attr_t attr;
+    ucs_status_t status;
+    int rc;
+
+
+    /* TODO check MPI thread mode */
+    params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
+    if (enable_mpi_threads) {
+        params.thread_mode = UCS_THREAD_MODE_MULTI;
+    } else {
+        params.thread_mode = UCS_THREAD_MODE_SINGLE;
+    }
+
+    status = ucp_worker_create(opal_common_ucx.ucp_context, &params,
+                               &opal_common_ucx.ucp_worker);
+    if (UCS_OK != status) {
+        MCA_COMMON_UCX_ERROR("Failed to create UCP worker");
+        return OPAL_ERROR;
+    }
+
+    attr.field_mask = UCP_WORKER_ATTR_FIELD_THREAD_MODE;
+    status = ucp_worker_query(opal_common_ucx.ucp_worker, &attr);
+    if (UCS_OK != status) {
+        MCA_COMMON_UCX_ERROR("Failed to query UCP worker thread level");
+        rc = OPAL_ERROR;
+        goto err_destroy_worker;
+    }
+
+    if (enable_mpi_threads && (attr.thread_mode != UCS_THREAD_MODE_MULTI)) {
+        /* UCX does not support multithreading, disqualify current PML for now */
+        /* TODO: we should let OMPI to fallback to THREAD_SINGLE mode */
+        MCA_COMMON_UCX_VERBOSE(1, "UCP worker does not support MPI_THREAD_MULTIPLE");
+        rc = OPAL_ERR_NOT_SUPPORTED;
+        goto err_destroy_worker;
+    }
+
+    MCA_COMMON_UCX_VERBOSE(2, "created ucp context %p, worker %p",
+                           (void *)opal_common_ucx.ucp_context,
+                           (void *)opal_common_ucx.ucp_worker);
+
+    return OPAL_SUCCESS;
+
+err_destroy_worker:
+    ucp_worker_destroy(opal_common_ucx.ucp_worker);
+    return rc;
+}
+
+int opal_common_ucx_init(int enable_mpi_threads, mca_base_component_t **version)
+{
+    int rc;
+
+    if (opal_common_ucx.first_version) {
+        *version = opal_common_ucx.first_version;
+        return OPAL_SUCCESS;
+    }
+
+    rc = opal_common_ucx_init_worker(enable_mpi_threads);
+    if (rc < 0) {
+        return rc;
+    }
+
+    /* Early bird gets the worm */
+    opal_common_ucx.first_version = *version;
+    rc = opal_common_ucx_send_worker_address(*version);
+    if (rc < 0) {
+        MCA_COMMON_UCX_ERROR("Failed to send worker address")
+        ucp_worker_destroy(opal_common_ucx.ucp_worker);
+    }
+
+    return rc;
+}
+
+int opal_common_ucx_cleanup(void)
+{
+    if (opal_common_ucx.ucp_worker != NULL) {
+        ucp_worker_destroy(opal_common_ucx.ucp_worker);
+        opal_common_ucx.ucp_worker = NULL;
+    }
+
+    return OPAL_SUCCESS;
+}

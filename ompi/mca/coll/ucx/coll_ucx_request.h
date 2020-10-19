@@ -17,9 +17,9 @@
 #include "coll_ucx.h"
 
 enum {
-    MCA_PML_UCX_REQUEST_FLAG_SEND         = (1 << 0), /* Persistent send */
-    MCA_PML_UCX_REQUEST_FLAG_FREE_CALLED  = (1 << 1),
-    MCA_PML_UCX_REQUEST_FLAG_COMPLETED    = (1 << 2)
+    MCA_COLL_UCX_REQUEST_FLAG_TRIGGERED    = (1 << 0), /* Persistent send */
+    MCA_COLL_UCX_REQUEST_FLAG_FREE_CALLED  = (1 << 1),
+    MCA_COLL_UCX_REQUEST_FLAG_COMPLETED    = (1 << 2)
 };
 
 struct coll_ucx_persistent_op {

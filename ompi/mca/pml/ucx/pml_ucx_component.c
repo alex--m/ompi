@@ -30,9 +30,9 @@ mca_pml_base_component_2_0_0_t mca_pml_ucx_component = {
          MCA_PML_BASE_VERSION_2_0_0,
 
          .mca_component_name            = "ucx",
-         .mca_component_major_version   = OMPI_MAJOR_VERSION,
-         .mca_component_minor_version   = OMPI_MINOR_VERSION,
-         .mca_component_release_version = OMPI_RELEASE_VERSION,
+         MCA_BASE_MAKE_VERSION(component, OMPI_MAJOR_VERSION,
+                               OMPI_MINOR_VERSION, OMPI_RELEASE_VERSION),
+
          .mca_open_component            = mca_pml_ucx_component_open,
          .mca_close_component           = mca_pml_ucx_component_close,
          .mca_query_component           = NULL,
@@ -72,20 +72,16 @@ static int mca_pml_ucx_component_open(void)
 {
     opal_common_ucx_mca_register();
 
-    return mca_pml_ucx_open();
+    return mca_common_ucx_open("MPI", &request_size);
 }
 
 static int mca_pml_ucx_component_close(void)
 {
-    int rc;
-
-    rc = mca_pml_ucx_close();
-    if (rc != 0) {
-        return rc;
-    }
+    int rc = mca_common_ucx_close();
 
     opal_common_ucx_mca_deregister();
-    return 0;
+
+    return rc;
 }
 
 static mca_pml_base_module_t*
@@ -94,9 +90,19 @@ mca_pml_ucx_component_init(int* priority, bool enable_progress_threads,
 {
     int ret;
 
-    if ( (ret = mca_pml_ucx_init(enable_mpi_threads)) != 0) {
+    PML_UCX_VERBOSE(1, "mca_pml_ucx_init");
+
+    ret = mca_common_ucx_init(&mca_coll_ucx_component.pmlm_version);
+    if (ret < 0) {
         return NULL;
     }
+
+    /* Create a completed request to be returned from isend */
+    OBJ_CONSTRUCT(&ompi_pml_ucx.completed_send_req, ompi_request_t);
+    OBJ_CONSTRUCT(&ompi_pml_ucx.persistent_reqs, mca_common_ucx_freelist_t);
+    mca_pml_ucx_completed_request_init(&ompi_pml_ucx.completed_send_req);
+
+    opal_progress_register(mca_pml_ucx_progress);
 
     *priority = ompi_pml_ucx.priority;
     return &ompi_pml_ucx.super;
@@ -104,6 +110,15 @@ mca_pml_ucx_component_init(int* priority, bool enable_progress_threads,
 
 static int mca_pml_ucx_component_fini(void)
 {
-    return mca_pml_ucx_cleanup();
+    MCA_COMMON_UCX_VERBOSE(1, "mca_pml_ucx_cleanup");
+
+    opal_progress_unregister(mca_pml_ucx_progress);
+
+    ompi_pml_ucx.completed_send_req.req_state = OMPI_REQUEST_INVALID;
+    OMPI_REQUEST_FINI(&ompi_pml_ucx.completed_send_req);
+    OBJ_DESTRUCT(&ompi_pml_ucx.completed_send_req);
+    OBJ_DESTRUCT(&ompi_pml_ucx.persistent_reqs);
+
+    return mca_common_ucx_cleanup();
 }
 

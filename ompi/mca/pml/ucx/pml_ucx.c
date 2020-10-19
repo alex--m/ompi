@@ -89,297 +89,6 @@ mca_pml_ucx_module_t ompi_pml_ucx = {
 #define PML_UCX_REQ_ALLOCA() \
     ((char *)alloca(ompi_pml_ucx.request_size) + ompi_pml_ucx.request_size);
 
-#if HAVE_UCP_WORKER_ADDRESS_FLAGS
-static int mca_pml_ucx_send_worker_address_type(int addr_flags, int modex_scope)
-{
-    ucs_status_t status;
-    ucp_worker_attr_t attrs;
-    int rc;
-
-    attrs.field_mask    = UCP_WORKER_ATTR_FIELD_ADDRESS |
-                          UCP_WORKER_ATTR_FIELD_ADDRESS_FLAGS;
-    attrs.address_flags = addr_flags;
-
-    status = ucp_worker_query(ompi_pml_ucx.ucp_worker, &attrs);
-    if (UCS_OK != status) {
-        PML_UCX_ERROR("Failed to query UCP worker address");
-        return OMPI_ERROR;
-    }
-
-    OPAL_MODEX_SEND(rc, modex_scope, &mca_pml_ucx_component.pmlm_version,
-                    (void*)attrs.address, attrs.address_length);
-
-    ucp_worker_release_address(ompi_pml_ucx.ucp_worker, attrs.address);
-
-    if (OMPI_SUCCESS != rc) {
-        return OMPI_ERROR;
-    }
-
-    PML_UCX_VERBOSE(2, "Pack %s worker address, size %ld",
-                    (modex_scope == PMIX_LOCAL) ? "local" : "remote",
-                    attrs.address_length);
-
-    return OMPI_SUCCESS;
-}
-#endif
-
-static int mca_pml_ucx_send_worker_address(void)
-{
-    ucs_status_t status;
-
-#if !HAVE_UCP_WORKER_ADDRESS_FLAGS
-    ucp_address_t *address;
-    size_t addrlen;
-    int rc;
-
-    status = ucp_worker_get_address(ompi_pml_ucx.ucp_worker, &address, &addrlen);
-    if (UCS_OK != status) {
-        PML_UCX_ERROR("Failed to get worker address");
-        return OMPI_ERROR;
-    }
-
-    PML_UCX_VERBOSE(2, "Pack worker address, size %ld", addrlen);
-
-    OPAL_MODEX_SEND(rc, PMIX_GLOBAL,
-                    &mca_pml_ucx_component.pmlm_version, (void*)address, addrlen);
-
-    ucp_worker_release_address(ompi_pml_ucx.ucp_worker, address);
-
-    if (OMPI_SUCCESS != rc) {
-        goto err;
-    }
-#else
-    /* Pack just network device addresses for remote node peers */
-    status = mca_pml_ucx_send_worker_address_type(UCP_WORKER_ADDRESS_FLAG_NET_ONLY,
-                                                  PMIX_REMOTE);
-    if (UCS_OK != status) {
-        goto err;
-    }
-
-    status = mca_pml_ucx_send_worker_address_type(0, PMIX_LOCAL);
-    if (UCS_OK != status) {
-        goto err;
-    }
-#endif
-
-    return OMPI_SUCCESS;
-
-err:
-    PML_UCX_ERROR("Open MPI couldn't distribute EP connection details");
-    return OMPI_ERROR;
-}
-
-static int mca_pml_ucx_recv_worker_address(ompi_proc_t *proc,
-                                           ucp_address_t **address_p,
-                                           size_t *addrlen_p)
-{
-    int ret;
-
-    *address_p = NULL;
-    OPAL_MODEX_RECV(ret, &mca_pml_ucx_component.pmlm_version, &proc->super.proc_name,
-                    (void**)address_p, addrlen_p);
-    if (ret < 0) {
-        PML_UCX_ERROR("Failed to receive UCX worker address: %s (%d)",
-                      opal_strerror(ret), ret);
-    }
-
-    PML_UCX_VERBOSE(2, "Got proc %d address, size %ld",
-                    proc->super.proc_name.vpid, *addrlen_p);
-    return ret;
-}
-
-int mca_pml_ucx_open(void)
-{
-    ucp_context_attr_t attr;
-    ucp_params_t params;
-    ucp_config_t *config;
-    ucs_status_t status;
-
-    PML_UCX_VERBOSE(1, "mca_pml_ucx_open");
-
-    /* Read options */
-    status = ucp_config_read("MPI", NULL, &config);
-    if (UCS_OK != status) {
-        return OMPI_ERROR;
-    }
-
-    /* Initialize UCX context */
-    params.field_mask        = UCP_PARAM_FIELD_FEATURES |
-                               UCP_PARAM_FIELD_REQUEST_SIZE |
-                               UCP_PARAM_FIELD_REQUEST_INIT |
-                               UCP_PARAM_FIELD_REQUEST_CLEANUP |
-                               UCP_PARAM_FIELD_TAG_SENDER_MASK |
-                               UCP_PARAM_FIELD_MT_WORKERS_SHARED |
-                               UCP_PARAM_FIELD_ESTIMATED_NUM_EPS;
-    params.features          = UCP_FEATURE_TAG;
-    params.request_size      = sizeof(ompi_request_t);
-    params.request_init      = mca_pml_ucx_request_init;
-    params.request_cleanup   = mca_pml_ucx_request_cleanup;
-    params.tag_sender_mask   = PML_UCX_SPECIFIC_SOURCE_MASK;
-    params.mt_workers_shared = 0; /* we do not need mt support for context
-                                     since it will be protected by worker */
-    params.estimated_num_eps = ompi_proc_world_size();
-
-#if HAVE_DECL_UCP_PARAM_FIELD_ESTIMATED_NUM_PPN
-    params.estimated_num_ppn = opal_process_info.num_local_peers + 1;
-    params.field_mask       |= UCP_PARAM_FIELD_ESTIMATED_NUM_PPN;
-#endif
-
-    status = ucp_init(&params, config, &ompi_pml_ucx.ucp_context);
-    ucp_config_release(config);
-
-    if (UCS_OK != status) {
-        return OMPI_ERROR;
-    }
-
-    /* Query UCX attributes */
-    attr.field_mask        = UCP_ATTR_FIELD_REQUEST_SIZE;
-#if HAVE_UCP_ATTR_MEMORY_TYPES
-    attr.field_mask       |= UCP_ATTR_FIELD_MEMORY_TYPES;
-#endif
-    status = ucp_context_query(ompi_pml_ucx.ucp_context, &attr);
-    if (UCS_OK != status) {
-        ucp_cleanup(ompi_pml_ucx.ucp_context);
-        ompi_pml_ucx.ucp_context = NULL;
-        return OMPI_ERROR;
-    }
-
-    ompi_pml_ucx.request_size     = attr.request_size;
-    ompi_pml_ucx.cuda_initialized = false;
-
-#if HAVE_UCP_ATTR_MEMORY_TYPES && OPAL_CUDA_SUPPORT
-    if (attr.memory_types & UCS_BIT(UCS_MEMORY_TYPE_CUDA)) {
-        mca_common_cuda_stage_one_init();
-        ompi_pml_ucx.cuda_initialized = true;
-    }
-#endif
-    return OMPI_SUCCESS;
-}
-
-int mca_pml_ucx_close(void)
-{
-    PML_UCX_VERBOSE(1, "mca_pml_ucx_close");
-
-#if OPAL_CUDA_SUPPORT
-    if (ompi_pml_ucx.cuda_initialized) {
-        mca_common_cuda_fini();
-    }
-#endif
-    if (ompi_pml_ucx.ucp_context != NULL) {
-        ucp_cleanup(ompi_pml_ucx.ucp_context);
-        ompi_pml_ucx.ucp_context = NULL;
-    }
-    return OMPI_SUCCESS;
-}
-
-int mca_pml_ucx_init(int enable_mpi_threads)
-{
-    ucp_worker_params_t params;
-    ucp_worker_attr_t attr;
-    ucs_status_t status;
-    int i, rc;
-
-    PML_UCX_VERBOSE(1, "mca_pml_ucx_init");
-
-    /* TODO check MPI thread mode */
-    params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-    if (enable_mpi_threads) {
-        params.thread_mode = UCS_THREAD_MODE_MULTI;
-    } else {
-        params.thread_mode = UCS_THREAD_MODE_SINGLE;
-    }
-
-    status = ucp_worker_create(ompi_pml_ucx.ucp_context, &params,
-                               &ompi_pml_ucx.ucp_worker);
-    if (UCS_OK != status) {
-        PML_UCX_ERROR("Failed to create UCP worker");
-        rc = OMPI_ERROR;
-        goto err;
-    }
-
-    attr.field_mask = UCP_WORKER_ATTR_FIELD_THREAD_MODE;
-    status = ucp_worker_query(ompi_pml_ucx.ucp_worker, &attr);
-    if (UCS_OK != status) {
-        PML_UCX_ERROR("Failed to query UCP worker thread level");
-        rc = OMPI_ERROR;
-        goto err_destroy_worker;
-    }
-
-    if (enable_mpi_threads && (attr.thread_mode != UCS_THREAD_MODE_MULTI)) {
-        /* UCX does not support multithreading, disqualify current PML for now */
-        /* TODO: we should let OMPI to fallback to THREAD_SINGLE mode */
-        PML_UCX_VERBOSE(1, "UCP worker does not support MPI_THREAD_MULTIPLE. "
-                           "PML UCX could not be selected");
-        rc = OMPI_ERR_NOT_SUPPORTED;
-        goto err_destroy_worker;
-    }
-
-    rc = mca_pml_ucx_send_worker_address();
-    if (rc < 0) {
-        goto err_destroy_worker;
-    }
-
-    ompi_pml_ucx.datatype_attr_keyval = MPI_KEYVAL_INVALID;
-    for (i = 0; i < OMPI_DATATYPE_MAX_PREDEFINED; ++i) {
-        ompi_pml_ucx.predefined_types[i] = PML_UCX_DATATYPE_INVALID;
-    }
-
-    /* Initialize the free lists */
-    OBJ_CONSTRUCT(&ompi_pml_ucx.persistent_reqs, mca_pml_ucx_freelist_t);
-    OBJ_CONSTRUCT(&ompi_pml_ucx.convs,           mca_pml_ucx_freelist_t);
-
-    /* Create a completed request to be returned from isend */
-    OBJ_CONSTRUCT(&ompi_pml_ucx.completed_send_req, ompi_request_t);
-    mca_pml_ucx_completed_request_init(&ompi_pml_ucx.completed_send_req);
-
-    opal_progress_register(mca_pml_ucx_progress);
-
-    PML_UCX_VERBOSE(2, "created ucp context %p, worker %p",
-                    (void *)ompi_pml_ucx.ucp_context,
-                    (void *)ompi_pml_ucx.ucp_worker);
-    return OMPI_SUCCESS;
-
-err_destroy_worker:
-    ucp_worker_destroy(ompi_pml_ucx.ucp_worker);
-err:
-    ompi_pml_ucx.ucp_worker = NULL;
-    return rc;
-}
-
-int mca_pml_ucx_cleanup(void)
-{
-    int i;
-
-    PML_UCX_VERBOSE(1, "mca_pml_ucx_cleanup");
-
-    opal_progress_unregister(mca_pml_ucx_progress);
-
-    if (ompi_pml_ucx.datatype_attr_keyval != MPI_KEYVAL_INVALID) {
-        ompi_attr_free_keyval(TYPE_ATTR, &ompi_pml_ucx.datatype_attr_keyval, false);
-    }
-
-    for (i = 0; i < OMPI_DATATYPE_MAX_PREDEFINED; ++i) {
-        if (ompi_pml_ucx.predefined_types[i] != PML_UCX_DATATYPE_INVALID) {
-            ucp_dt_destroy(ompi_pml_ucx.predefined_types[i]);
-            ompi_pml_ucx.predefined_types[i] = PML_UCX_DATATYPE_INVALID;
-        }
-    }
-
-    ompi_pml_ucx.completed_send_req.req_state = OMPI_REQUEST_INVALID;
-    OMPI_REQUEST_FINI(&ompi_pml_ucx.completed_send_req);
-    OBJ_DESTRUCT(&ompi_pml_ucx.completed_send_req);
-
-    OBJ_DESTRUCT(&ompi_pml_ucx.convs);
-    OBJ_DESTRUCT(&ompi_pml_ucx.persistent_reqs);
-
-    if (ompi_pml_ucx.ucp_worker != NULL) {
-        ucp_worker_destroy(ompi_pml_ucx.ucp_worker);
-        ompi_pml_ucx.ucp_worker = NULL;
-    }
-
-    return OMPI_SUCCESS;
-}
-
 static ucp_ep_h mca_pml_ucx_add_proc_common(ompi_proc_t *proc)
 {
     size_t addrlen = 0;
@@ -488,27 +197,8 @@ int mca_pml_ucx_del_procs(struct ompi_proc_t **procs, size_t nprocs)
 
 int mca_pml_ucx_enable(bool enable)
 {
-    ompi_attribute_fn_ptr_union_t copy_fn;
-    ompi_attribute_fn_ptr_union_t del_fn;
-    int ret;
-
-    /* Create a key for adding custom attributes to datatypes */
-    copy_fn.attr_datatype_copy_fn  =
-                    (MPI_Type_internal_copy_attr_function*)MPI_TYPE_NULL_COPY_FN;
-    del_fn.attr_datatype_delete_fn = mca_pml_ucx_datatype_attr_del_fn;
-    ret = ompi_attr_create_keyval(TYPE_ATTR, copy_fn, del_fn,
-                                  &ompi_pml_ucx.datatype_attr_keyval, NULL, 0,
-                                  NULL);
-    if (ret != OMPI_SUCCESS) {
-        PML_UCX_ERROR("Failed to create keyval for UCX datatypes: %d", ret);
-        return ret;
-    }
-
     PML_UCX_FREELIST_INIT(&ompi_pml_ucx.persistent_reqs,
                           mca_pml_ucx_persistent_request_t,
-                          128, -1, 128);
-    PML_UCX_FREELIST_INIT(&ompi_pml_ucx.convs,
-                          mca_pml_ucx_convertor_t,
                           128, -1, 128);
     return OMPI_SUCCESS;
 }
@@ -560,7 +250,7 @@ int mca_pml_ucx_irecv(void *buf, size_t count, ompi_datatype_t *datatype,
                       struct ompi_request_t **request)
 {
 #if HAVE_DECL_UCP_TAG_RECV_NBX
-    pml_ucx_datatype_t *op_data = mca_pml_ucx_get_op_data(datatype);
+    mca_common_ucx_datatype_t *op_data = mca_common_ucx_get_op_data(datatype);
     ucp_request_param_t *param  = &op_data->op_param.recv;
 #endif
 
@@ -573,7 +263,7 @@ int mca_pml_ucx_irecv(void *buf, size_t count, ompi_datatype_t *datatype,
     PML_UCX_MAKE_RECV_TAG(ucp_tag, ucp_tag_mask, tag, src, comm);
 #if HAVE_DECL_UCP_TAG_RECV_NBX
     req = (ompi_request_t*)ucp_tag_recv_nbx(ompi_pml_ucx.ucp_worker, buf,
-                                            mca_pml_ucx_get_data_size(op_data, count),
+                                            mca_common_ucx_get_data_size(op_data, count),
                                             ucp_tag, ucp_tag_mask, param);
 #else
     req = (ompi_request_t*)ucp_tag_recv_nb(ompi_pml_ucx.ucp_worker, buf, count,
@@ -599,7 +289,7 @@ int mca_pml_ucx_recv(void *buf, size_t count, ompi_datatype_t *datatype, int src
     /* coverity[bad_alloc_arithmetic] */
     void *req = PML_UCX_REQ_ALLOCA();
 #if HAVE_DECL_UCP_TAG_RECV_NBX
-    pml_ucx_datatype_t *op_data     = mca_pml_ucx_get_op_data(datatype);
+    mca_common_ucx_datatype_t *op_data     = mca_common_ucx_get_op_data(datatype);
     ucp_request_param_t *recv_param = &op_data->op_param.recv;
     ucp_request_param_t param;
 
@@ -617,7 +307,7 @@ int mca_pml_ucx_recv(void *buf, size_t count, ompi_datatype_t *datatype, int src
     PML_UCX_MAKE_RECV_TAG(ucp_tag, ucp_tag_mask, tag, src, comm);
 #if HAVE_DECL_UCP_TAG_RECV_NBX
     ucp_tag_recv_nbx(ompi_pml_ucx.ucp_worker, buf,
-                     mca_pml_ucx_get_data_size(op_data, count),
+                     mca_common_ucx_get_data_size(op_data, count),
                      ucp_tag, ucp_tag_mask, &param);
 #else
     ucp_tag_recv_nbr(ompi_pml_ucx.ucp_worker, buf, count,
@@ -791,7 +481,7 @@ mca_pml_ucx_common_send_nbx(ucp_ep_h ep, const void *buf,
                             mca_pml_base_send_mode_t mode,
                             ucp_request_param_t *param)
 {
-    pml_ucx_datatype_t *op_data = mca_pml_ucx_get_op_data(datatype);
+    mca_common_ucx_datatype_t *op_data = mca_common_ucx_get_op_data(datatype);
 
     if (OPAL_UNLIKELY(MCA_PML_BASE_SEND_BUFFERED == mode)) {
         return mca_pml_ucx_bsend(ep, buf, count, datatype, tag);
@@ -801,7 +491,7 @@ mca_pml_ucx_common_send_nbx(ucp_ep_h ep, const void *buf,
                                     (ucp_send_callback_t)param->cb.send);
     } else {
         return ucp_tag_send_nbx(ep, buf,
-                                mca_pml_ucx_get_data_size(op_data, count),
+                                mca_common_ucx_get_data_size(op_data, count),
                                 tag, param);
     }
 }
@@ -828,7 +518,7 @@ int mca_pml_ucx_isend(const void *buf, size_t count, ompi_datatype_t *datatype,
 #if HAVE_DECL_UCP_TAG_SEND_NBX
     req = (ompi_request_t*)mca_pml_ucx_common_send_nbx(ep, buf, count, datatype,
                                                        PML_UCX_MAKE_SEND_TAG(tag, comm), mode,
-                                                       &mca_pml_ucx_get_op_data(datatype)->op_param.send);
+                                                       &mca_common_ucx_get_op_data(datatype)->op_param.send);
 #else
     req = (ompi_request_t*)mca_pml_ucx_common_send(ep, buf, count, datatype,
                                                    mca_pml_ucx_get_datatype(datatype),
@@ -889,7 +579,7 @@ mca_pml_ucx_send_nbr(ucp_ep_h ep, const void *buf, size_t count,
     /* coverity[bad_alloc_arithmetic] */
     ucs_status_ptr_t req = PML_UCX_REQ_ALLOCA();
 #if HAVE_DECL_UCP_TAG_SEND_NBX
-    pml_ucx_datatype_t *op_data = mca_pml_ucx_get_op_data(datatype);
+    mca_common_ucx_datatype_t *op_data = mca_common_ucx_get_op_data(datatype);
     ucp_request_param_t param   = {
         .op_attr_mask = UCP_OP_ATTR_FIELD_REQUEST |
                         (op_data->op_param.send.op_attr_mask & UCP_OP_ATTR_FIELD_DATATYPE) |
@@ -899,7 +589,7 @@ mca_pml_ucx_send_nbr(ucp_ep_h ep, const void *buf, size_t count,
     };
 
     req = ucp_tag_send_nbx(ep, buf,
-                           mca_pml_ucx_get_data_size(op_data, count),
+                           mca_common_ucx_get_data_size(op_data, count),
                            tag, &param);
     if (OPAL_LIKELY(req == UCS_OK)) {
         return OMPI_SUCCESS;

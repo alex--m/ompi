@@ -131,12 +131,16 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
 
     module->super.coll_module_enable  = mca_coll_ucx_module_enable;
     module->super.ft_event            = mca_coll_ucx_ft_event;
-    module->super.coll_allreduce      = mca_coll_ucx_allreduce;
+    module->super.coll_allreduce      = mca_coll_ucx_component.stable_reduce ?
+                                        mca_coll_ucx_allreduce :
+                                        mca_coll_ucx_allreduce_stable;
 /*    module->super.coll_iallreduce     = mca_coll_ucx_iallreduce; */
 /*    module->super.coll_allreduce_init = mca_coll_ucx_allreduce_init; */
     module->super.coll_barrier        = mca_coll_ucx_barrier;
     module->super.coll_bcast          = mca_coll_ucx_bcast;
-    module->super.coll_reduce         = mca_coll_ucx_reduce;
+    module->super.coll_reduce         = mca_coll_ucx_component.stable_reduce ?
+                                        mca_coll_ucx_reduce :
+                                        mca_coll_ucx_reduce_stable;
     module->super.coll_scatter        = mca_coll_ucx_scatter;
     module->super.coll_scatterv       = mca_coll_ucx_scatterv;
     module->super.coll_gather         = mca_coll_ucx_gather;

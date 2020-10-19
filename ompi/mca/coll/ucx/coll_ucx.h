@@ -10,8 +10,8 @@
   $HEADER$
  */
 
-#ifndef MCA_COLL_UCX_H
-#define MCA_COLL_UCX_H
+#ifndef COLL_UCX_H
+#define COLL_UCX_H
 
 #include "ompi_config.h"
 #include "ompi/request/request.h"
@@ -21,7 +21,7 @@
 #include "ompi/datatype/ompi_datatype_internal.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/request/request.h"
-#include "opal/mca/common/ucx/common_ucx.h"
+#include "ompi/mca/common/ucx/common_ucx.h"
 #include "ompi/op/op.h"
 
 #include <ucg/api/ucg_mpi.h>
@@ -39,38 +39,33 @@
 BEGIN_C_DECLS
 
 typedef struct coll_ucx_persistent_op mca_coll_ucx_persistent_op_t;
-typedef struct coll_ucx_convertor     mca_coll_ucx_convertor_t;
 
 typedef struct mca_coll_ucx_component {
     /* base MCA collectives component */
-    mca_coll_base_component_t super;
+    mca_coll_base_component_t   super;
 
-    /* MCA parameters */
-    int                       priority;
-    int                       verbose;
-    int                       num_disconnect;
-
-    /* UCX global objects */
-    ucg_context_h             ucg_context;
-    ucp_worker_h              ucp_worker;
-    int                       output;
-    ucs_list_link_t           group_head;
+    /* UCG global objects */
+    ucs_list_link_t             group_head;
+    mca_common_ucx_datatypes_t *datatypes;
 
     /* Requests */
-    mca_coll_ucx_freelist_t   persistent_ops;
-    ompi_request_t            completed_send_req;
-    size_t                    request_size;
+    mca_coll_ucx_freelist_t     persistent_ops;
+    ompi_request_t              completed_send_req;
+
+    /* MCA parameters */
+    int                         priority;
+    bool                        stable_reduce;
 } mca_coll_ucx_component_t;
 OMPI_MODULE_DECLSPEC extern mca_coll_ucx_component_t mca_coll_ucx_component;
 
 typedef struct mca_coll_ucx_module {
-    mca_coll_base_module_t super;
+    mca_coll_base_module_t      super;
 
     /* UCX per-communicator context */
-    ucg_group_h            ucg_group;
+    ucg_group_h                 ucg_group;
 
     /* Progress list membership */
-    ucs_list_link_t        ucs_list;
+    ucs_list_link_t             ucs_list;
 } mca_coll_ucx_module_t;
 OBJ_CLASS_DECLARATION(mca_coll_ucx_module_t);
 
@@ -81,7 +76,6 @@ int  mca_coll_ucx_open(void);
 int  mca_coll_ucx_close(void);
 int  mca_coll_ucx_init(void);
 void mca_coll_ucx_cleanup(void);
-int  mca_coll_ucx_enable(bool enable);
 int  mca_coll_ucx_progress(void);
 
 /*
@@ -116,12 +110,17 @@ int mca_coll_ucx_neighbors_query(ompi_communicator_t *comm,
 /*
  * The collective operations themselves.
  */
-// TODO: macros here to reduce duplication!
 int mca_coll_ucx_allreduce(const void *sbuf, void *rbuf, int count,
-                            struct ompi_datatype_t *dtype,
-                            struct ompi_op_t *op,
-                            struct ompi_communicator_t *comm,
-                            mca_coll_base_module_t *module);
+                           struct ompi_datatype_t *dtype,
+                           struct ompi_op_t *op,
+                           struct ompi_communicator_t *comm,
+                           mca_coll_base_module_t *module);
+
+int mca_coll_ucx_allreduce_stable(const void *sbuf, void *rbuf, int count,
+                                  struct ompi_datatype_t *dtype,
+                                  struct ompi_op_t *op,
+                                  struct ompi_communicator_t *comm,
+                                  mca_coll_base_module_t *module);
 
 int mca_coll_ucx_iallreduce(const void *sbuf, void *rbuf, int count,
                             struct ompi_datatype_t *dtype,
@@ -148,6 +147,11 @@ int mca_coll_ucx_reduce(const void *sbuf, void* rbuf, int count,
                         struct ompi_datatype_t *dtype, struct ompi_op_t *op,
                         int root, struct ompi_communicator_t *comm,
                         mca_coll_base_module_t *module);
+
+int mca_coll_ucx_reduce_stable(const void *sbuf, void* rbuf, int count,
+                               struct ompi_datatype_t *dtype, struct ompi_op_t *op,
+                               int root, struct ompi_communicator_t *comm,
+                               mca_coll_base_module_t *module);
 
 int mca_coll_ucx_scatter(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
                                void *rbuf, int rcount, struct ompi_datatype_t *rdtype,

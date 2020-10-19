@@ -15,7 +15,8 @@
 headers =                         \
         common_ucx.h              \
         common_ucx_wpool.h        \
-        common_ucx_wpool_int.h
+        common_ucx_wpool_int.h    \
+        common_ucx_freelist.h
 
 # Source files
 

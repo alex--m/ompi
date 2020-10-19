@@ -20,11 +20,12 @@
 #include <stdint.h>
 
 #include <ucp/api/ucp.h>
-#if HAVE_UCG_API_UCG_H
+#if HAVE_UCG
 #include <ucg/api/ucg.h>
 #endif
 
 #include "opal/mca/mca.h"
+#include "opal/util/proc.h"
 #include "opal/util/output.h"
 #include "opal/runtime/opal_progress.h"
 #include "opal/include/opal/constants.h"
@@ -113,11 +114,20 @@ enum opal_common_ucx_req_type {
     } while (0)
 
 typedef struct opal_common_ucx_module {
-    int  output;
-    int  verbose;
-    int  progress_iterations;
-    int  registered;
-    bool opal_mem_hooks;
+    int                        output;
+    int                        verbose;
+    int                        progress_iterations;
+    int                        registered;
+    bool                       opal_mem_hooks;
+
+    ucp_worker_h               ucp_worker;
+    ucp_context_h              ucp_context;
+#ifdef HAVE_UCG
+    ucg_context_h              ucg_context;
+#endif
+
+    mca_base_component_t      *first_version;
+    bool                       cuda_initialized;
 } opal_common_ucx_module_t;
 
 typedef struct opal_common_ucx_del_proc {
@@ -138,6 +148,24 @@ OPAL_DECLSPEC int opal_common_ucx_del_procs(opal_common_ucx_del_proc_t *procs, s
 OPAL_DECLSPEC int opal_common_ucx_del_procs_nofence(opal_common_ucx_del_proc_t *procs, size_t count,
                                                size_t my_rank, size_t max_disconnect, ucp_worker_h worker);
 OPAL_DECLSPEC void opal_common_ucx_mca_var_register(const mca_base_component_t *component);
+
+
+int opal_common_ucx_open(const char *prefix,
+#ifdef HAVE_UCG
+                         const ucg_params_t *ucg_params,
+#else
+                         const ucp_params_t *ucp_params,
+#endif
+                         opal_object_t *datatype_ctx,
+                         size_t *request_size);
+int opal_common_ucx_close(void);
+int opal_common_ucx_init(int enable_mpi_threads,
+                         mca_base_component_t **version);
+int opal_common_ucx_cleanup(void);
+int opal_common_ucx_recv_worker_address(mca_base_component_t *version,
+                                        opal_process_name_t *proc_name,
+                                        ucp_address_t **address_p,
+                                        size_t *addrlen_p);
 
 /**
  * Load an integer value of \c size bytes from \c ptr and cast it to uint64_t.

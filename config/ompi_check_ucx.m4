@@ -168,7 +168,8 @@ AC_DEFUN([OMPI_CHECK_UCX],[
           [AS_IF([test "$ompi_check_ucg_happy" = "yes"],
                  [$1_CPPFLAGS="[$]$1_CPPFLAGS $ompi_check_ucg_CPPFLAGS"
                   $1_LDFLAGS="[$]$1_LDFLAGS $ompi_check_ucg_LDFLAGS"
-                  $1_LIBS="[$]$1_LIBS $ompi_check_ucg_LIBS"],
+                  $1_LIBS="[$]$1_LIBS $ompi_check_ucg_LIBS"
+                  AC_DEFINE([HAVE_UCG],[1],[UCX includes UCG (collective API)])],
                  [$1_CPPFLAGS="[$]$1_CPPFLAGS $ompi_check_ucx_CPPFLAGS"
                   $1_LDFLAGS="[$]$1_LDFLAGS $ompi_check_ucx_LDFLAGS"
                   $1_LIBS="[$]$1_LIBS $ompi_check_ucx_LIBS"])
