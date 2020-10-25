@@ -19,9 +19,11 @@ coll_ucx_sources = \
         coll_ucx.h \
         coll_ucx_request.h \
         coll_ucx_freelist.h \
+        coll_ucx_datatype.h \
         coll_ucx_op.c \
         coll_ucx_module.c \
         coll_ucx_request.c \
+        coll_ucx_datatype.c \
         coll_ucx_neighbors.c \
         coll_ucx_component.c
 

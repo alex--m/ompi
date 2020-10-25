@@ -11,6 +11,9 @@
 
 #include "coll_ucx.h"
 #include "coll_ucx_request.h"
+#include "coll_ucx_datatype.h"
+
+#include "ompi/attribute/attribute.h"
 
 static int ucx_open(void);
 static int ucx_close(void);
@@ -239,9 +242,16 @@ static int mca_coll_ucx_recv_worker_address(ompi_proc_t *proc,
     return ret;
 }
 
-static int mca_coll_ucg_is_dtype_int(ompi_datatype_t *dtype)
+static int mca_coll_ucg_datatype_convert(ompi_datatype_t *mpi_dt,
+                                         ucp_datatype_t *ucp_dt)
 {
-    /* TODO: what about signed/unsigned? */
+    *ucp_dt = mca_coll_ucx_get_datatype(mpi_dt);
+    return 0;
+}
+
+static int mca_coll_ucg_is_dtype_int(ompi_datatype_t *dtype, int *is_signed)
+{
+    *is_signed = 0;
     return (dtype->super.flags & OMPI_DATATYPE_FLAG_DATA_INT);
 }
 
@@ -259,6 +269,11 @@ static int mca_coll_ucg_is_op_loc(ompi_op_t *op)
 {
     return ((op == &ompi_mpi_op_minloc.op) ||
             (op == &ompi_mpi_op_maxloc.op));
+}
+
+static int mca_coll_ucg_is_commutative(ompi_op_t *op)
+{
+    return ompi_op_is_commute(op);
 }
 
 int mca_coll_ucx_open(void)
@@ -297,8 +312,8 @@ int mca_coll_ucx_open(void)
     ucg_params.field_mask               = UCG_PARAM_FIELD_JOB_UID      |
                                           UCG_PARAM_FIELD_ADDRESS_CB   |
                                           UCG_PARAM_FIELD_NEIGHBORS_CB |
-                                          UCG_PARAM_FIELD_REDUCE_CB    |
-                                          UCG_PARAM_FIELD_TYPE_INFO_CB |
+                                          UCG_PARAM_FIELD_DATATYPE_CB  |
+                                          UCG_PARAM_FIELD_REDUCE_OP_CB |
                                           UCG_PARAM_FIELD_MPI_IN_PLACE |
                                           UCG_PARAM_FIELD_HANDLE_FAULT;
     ucg_params.job_uid                  = ompi_process_info.my_name.jobid;
@@ -310,17 +325,21 @@ int mca_coll_ucx_open(void)
                                           mca_coll_ucx_neighbors_count;
     ucg_params.neighbors.vertex_query_f = (typeof(ucg_params.neighbors.vertex_query_f))
                                           mca_coll_ucx_neighbors_query;
-    ucg_params.mpi_reduce_f             = (typeof(ucg_params.mpi_reduce_f))
-                                          ompi_op_reduce;
-    ucg_params.mpi_in_place             = (void*)MPI_IN_PLACE;
-    ucg_params.type_info.mpi_is_int_f   = (typeof(ucg_params.type_info.mpi_is_int_f))
+    ucg_params.datatype.convert         = (typeof(ucg_params.datatype.convert))
+                                          mca_coll_ucg_datatype_convert;
+    ucg_params.datatype.is_integer_f    = (typeof(ucg_params.datatype.is_integer_f))
                                           mca_coll_ucg_is_dtype_int;
-    ucg_params.type_info.mpi_is_fp_f    = (typeof(ucg_params.type_info.mpi_is_fp_f))
-                                          mca_coll_ucg_is_dtype_fp;
-    ucg_params.type_info.mpi_is_sum_f   = (typeof(ucg_params.type_info.mpi_is_sum_f))
+    ucg_params.datatype.is_floating_point_f = (typeof(ucg_params.datatype.is_floating_point_f))
+                                              mca_coll_ucg_is_dtype_fp;
+    ucg_params.reduce_op.reduce_cb_f    = (typeof(ucg_params.reduce_op.reduce_cb_f))
+                                          ompi_op_reduce;
+    ucg_params.reduce_op.is_sum_f       = (typeof(ucg_params.reduce_op.is_sum_f))
                                           mca_coll_ucg_is_op_sum;
-    ucg_params.type_info.mpi_is_loc_f   = (typeof(ucg_params.type_info.mpi_is_loc_f))
-                                          mca_coll_ucg_is_op_loc;
+    ucg_params.reduce_op.is_loc_expected_f  = (typeof(ucg_params.reduce_op.is_loc_expected_f))
+                                              mca_coll_ucg_is_op_loc;
+    ucg_params.reduce_op.is_commutative_f = (typeof(ucg_params.reduce_op.is_commutative_f))
+                                            mca_coll_ucg_is_commutative;
+    ucg_params.mpi_in_place             = (void*)MPI_IN_PLACE;
     ucg_params.fault.mode               = UCG_FAULT_IS_FATAL;
 
     status = ucg_init(&ucg_params, config, &mca_coll_ucx_component.ucg_context);
@@ -345,7 +364,21 @@ int mca_coll_ucx_open(void)
        goto out;
     }
 
+    int i;
+    mca_coll_ucx_component.datatype_attr_keyval = MPI_KEYVAL_INVALID;
+    for (i = 0; i < OMPI_DATATYPE_MAX_PREDEFINED; ++i) {
+        mca_coll_ucx_component.predefined_types[i] = COLL_UCX_DATATYPE_INVALID;
+    }
+
+    /* Initialize the free lists */
+    OBJ_CONSTRUCT(&mca_coll_ucx_component.convs, mca_coll_ucx_freelist_t);
+
+    COLL_UCX_FREELIST_INIT(&mca_coll_ucx_component.convs,
+                           mca_coll_ucx_convertor_t,
+                           128, -1, 128);
+
     ucs_list_head_init(&mca_coll_ucx_component.group_head);
+
     return OMPI_SUCCESS;
 
 out:
@@ -357,6 +390,16 @@ out:
 int mca_coll_ucx_close(void)
 {
     COLL_UCX_VERBOSE(1, "mca_coll_ucx_close");
+
+    int i;
+    for (i = 0; i < OMPI_DATATYPE_MAX_PREDEFINED; ++i) {
+        if (mca_coll_ucx_component.predefined_types[i] != COLL_UCX_DATATYPE_INVALID) {
+            ucp_dt_destroy(mca_coll_ucx_component.predefined_types[i]);
+            mca_coll_ucx_component.predefined_types[i] = COLL_UCX_DATATYPE_INVALID;
+        }
+    }
+
+    OBJ_DESTRUCT(&mca_coll_ucx_component.convs);
 
     if (mca_coll_ucx_component.ucp_worker != NULL) {
        mca_coll_ucx_cleanup();
@@ -426,14 +469,11 @@ int mca_coll_ucx_init(void)
         goto err_destroy_worker;
     }
 
-    /* Initialize the free lists */
-    OBJ_CONSTRUCT(&mca_coll_ucx_component.persistent_ops, mca_coll_ucx_freelist_t);
-
-    /* Create a completed request to be returned from isend */
-    OBJ_CONSTRUCT(&mca_coll_ucx_component.completed_send_req, ompi_request_t);
-    mca_coll_ucx_completed_request_init(&mca_coll_ucx_component.completed_send_req);
-
-    opal_progress_register(mca_coll_ucx_progress);
+    rc = opal_progress_register(mca_coll_ucx_progress);
+    if (OPAL_SUCCESS != rc) {
+        COLL_UCX_ERROR("Failed to progress register");
+        goto err_destroy_worker;
+    }
 
     COLL_UCX_VERBOSE(2, "created ucp context %p, worker %p",
                     (void *)mca_coll_ucx_component.ucg_context,
@@ -452,11 +492,6 @@ void mca_coll_ucx_cleanup(void)
     COLL_UCX_VERBOSE(1, "mca_coll_ucx_cleanup");
 
     opal_progress_unregister(mca_coll_ucx_progress);
-
-    mca_coll_ucx_component.completed_send_req.req_state = OMPI_REQUEST_INVALID;
-    OMPI_REQUEST_FINI(&mca_coll_ucx_component.completed_send_req);
-    OBJ_DESTRUCT(&mca_coll_ucx_component.completed_send_req);
-    OBJ_DESTRUCT(&mca_coll_ucx_component.persistent_ops);
 
     if (mca_coll_ucx_component.ucp_worker) {
         ucp_worker_destroy(mca_coll_ucx_component.ucp_worker);

@@ -12,12 +12,14 @@
 
 #include "ompi_config.h"
 #include "ompi/constants.h"
+#include "ompi/attribute/attribute.h"
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/mca/coll/base/coll_base_functions.h"
 #include "ompi/op/op.h"
 
 #include "coll_ucx.h"
 #include "coll_ucx_request.h"
+#include "coll_ucx_datatype.h"
 
 static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
                                struct ompi_communicator_t *comm)
@@ -86,6 +88,26 @@ static int mca_coll_ucx_module_enable(mca_coll_base_module_t *module,
     mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*) module;
     int rc;
 
+    if (mca_coll_ucx_component.datatype_attr_keyval == MPI_KEYVAL_INVALID) {
+        /* Create a key for adding custom attributes to datatypes */
+        ompi_attribute_fn_ptr_union_t copy_fn;
+        ompi_attribute_fn_ptr_union_t del_fn;
+        copy_fn.attr_datatype_copy_fn  =
+                        (MPI_Type_internal_copy_attr_function*)MPI_TYPE_NULL_COPY_FN;
+        del_fn.attr_datatype_delete_fn = mca_coll_ucx_datatype_attr_del_fn;
+        rc = ompi_attr_create_keyval(TYPE_ATTR, copy_fn, del_fn,
+                                     &mca_coll_ucx_component.datatype_attr_keyval,
+                                     NULL, 0, NULL);
+        if (rc != OMPI_SUCCESS) {
+            COLL_UCX_ERROR("Failed to create keyval for UCX datatypes: %d", rc);
+            return rc;
+        }
+
+        COLL_UCX_FREELIST_INIT(&mca_coll_ucx_component.convs,
+                               mca_coll_ucx_convertor_t,
+                               128, -1, 128);
+    }
+
     /* prepare the placeholder for the array of request* */
     module->base_data = OBJ_NEW(mca_coll_base_comm_t);
     if (NULL == module->base_data) {
@@ -95,10 +117,6 @@ static int mca_coll_ucx_module_enable(mca_coll_base_module_t *module,
     rc = mca_coll_ucg_create(ucx_module, comm);
     if (rc != OMPI_SUCCESS)
         return rc;
-
-    COLL_UCX_FREELIST_INIT(&mca_coll_ucx_component.persistent_ops,
-                          mca_coll_ucx_persistent_op_t,
-                          128, -1, 128);
 
     COLL_UCX_VERBOSE(1, "UCX Collectives Module initialized");
     return OMPI_SUCCESS;

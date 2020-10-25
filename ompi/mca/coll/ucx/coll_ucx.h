@@ -60,6 +60,13 @@ typedef struct mca_coll_ucx_component {
     mca_coll_ucx_freelist_t   persistent_ops;
     ompi_request_t            completed_send_req;
     size_t                    request_size;
+
+    /* Datatypes */
+    int                       datatype_attr_keyval;
+    ucp_datatype_t            predefined_types[OMPI_DATATYPE_MPI_MAX_PREDEFINED];
+
+    /* Converters pool */
+    mca_coll_ucx_freelist_t   convs;
 } mca_coll_ucx_component_t;
 OMPI_MODULE_DECLSPEC extern mca_coll_ucx_component_t mca_coll_ucx_component;
 
