@@ -71,9 +71,13 @@ BEGIN_C_DECLS
     }
 
 enum opal_common_ucx_req_type {
-    OPAL_COMMON_UCX_REQUEST_TYPE_UCP = 0,
+    OPAL_COMMON_UCX_REQUEST_TYPE_UCP      = 0,
 #if HAVE_UCG
-    OPAL_COMMON_UCX_REQUEST_TYPE_UCG = 1,
+    OPAL_COMMON_UCX_REQUEST_TYPE_UCG      = 1,
+#endif
+#if HAVE_UCC
+    OPAL_COMMON_UCX_REQUEST_TYPE_UCC_TEAM = 2,
+    OPAL_COMMON_UCX_REQUEST_TYPE_UCC_COLL = 3,
 #endif
 };
 
@@ -211,6 +215,14 @@ ucs_status_t opal_common_ucx_request_status(ucs_status_ptr_t request,
 #ifdef UCG_H_
     case OPAL_COMMON_UCX_REQUEST_TYPE_UCG:
         return (1 - *(uintptr_t*)request);
+#endif
+
+#ifdef UCC_H_
+    case OPAL_COMMON_UCX_REQUEST_TYPE_UCC_TEAM:
+        return ucc_team_create_test(request);
+
+    case OPAL_COMMON_UCX_REQUEST_TYPE_UCC_COLL:
+        return ucc_collective_test(request);
 #endif
 
     default:
