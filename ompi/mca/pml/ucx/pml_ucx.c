@@ -760,8 +760,7 @@ int mca_pml_ucx_probe(int src, int tag, struct ompi_communicator_t* comm,
 
     PML_UCX_MAKE_RECV_TAG(ucp_tag, ucp_tag_mask, tag, src, comm);
 
-    MCA_COMMON_UCX_PROGRESS_LOOP_BY_REQ(opal_common_ucx.ucp_worker,
-                                        OPAL_COMMON_UCX_REQUEST_TYPE_UCP, NULL) {
+    MCA_COMMON_UCX_PROGRESS_LOOP(opal_common_ucx.ucp_worker) {
         ucp_msg = ucp_tag_probe_nb(opal_common_ucx.ucp_worker, ucp_tag,
                                    ucp_tag_mask, 0, &info);
         if (ucp_msg != NULL) {
@@ -810,8 +809,7 @@ int mca_pml_ucx_mprobe(int src, int tag, struct ompi_communicator_t* comm,
     PML_UCX_TRACE_PROBE("mprobe", src, tag, comm);
 
     PML_UCX_MAKE_RECV_TAG(ucp_tag, ucp_tag_mask, tag, src, comm);
-    MCA_COMMON_UCX_PROGRESS_LOOP_BY_REQ(opal_common_ucx.ucp_worker,
-                                        OPAL_COMMON_UCX_REQUEST_TYPE_UCP, NULL) {
+    MCA_COMMON_UCX_PROGRESS_LOOP(opal_common_ucx.ucp_worker) {
         ucp_msg = ucp_tag_probe_nb(opal_common_ucx.ucp_worker, ucp_tag, ucp_tag_mask,
                                    1, &info);
         if (ucp_msg != NULL) {
