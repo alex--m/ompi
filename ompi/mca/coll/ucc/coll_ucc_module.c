@@ -101,7 +101,7 @@ static int mca_coll_ucc_team_create(mca_coll_ucc_module_t *module,
     }
 
     MCA_COMMON_UCX_WAIT_LOOP(module->ucc_team,
-                             OPAL_COMMON_UCX_REQUEST_TYPE_UCC_TEAM,
+                             OPAL_COMMON_UCX_REQUEST_TYPE_UCC_TEAM, 0,
                              opal_common_ucx.ucp_worker, "ucc team", NULL);
 }
 

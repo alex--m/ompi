@@ -32,7 +32,7 @@ int mca_coll_ucc_barrier(struct ompi_communicator_t *comm,
     }
 
     MCA_COMMON_UCX_WAIT_LOOP(ucc_request,
-                             OPAL_COMMON_UCX_REQUEST_TYPE_UCC_COLL,
+                             OPAL_COMMON_UCX_REQUEST_TYPE_UCC_COLL, 0,
                              opal_common_ucx.ucp_worker, "ucc barrier",
                              ucc_collective_finalize(ucc_request));
 }
