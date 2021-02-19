@@ -43,7 +43,7 @@ mca_coll_ucx_la_LIBADD = $(top_builddir)/ompi/lib@OMPI_LIBMPI_NAME@.la $(coll_uc
 mca_coll_ucx_la_LDFLAGS = -module -avoid-version $(coll_ucx_LDFLAGS)
 
 noinst_LTLIBRARIES = $(component_noinst)
-libmca_coll_ucx_la_SOURCES =$(coll_ucx_sources)
+libmca_coll_ucx_la_SOURCES = $(coll_ucx_sources)
 libmca_coll_ucx_la_LIBADD = $(coll_ucx_LIBS)
 libmca_coll_ucx_la_LDFLAGS = -module -avoid-version $(coll_ucx_LDFLAGS)
 
