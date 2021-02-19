@@ -61,12 +61,14 @@ static void opal_common_ucx_mem_release_cb(void *buf, size_t length, void *cbdat
 OPAL_DECLSPEC void opal_common_ucx_mca_var_register(const mca_base_component_t *component)
 {
     char *default_tls = "rc_verbs,ud_verbs,rc_mlx5,dc_mlx5,ud_mlx5,cuda_ipc,rocm_ipc";
-    char *default_devices = "mlx*";
+    char *default_devices = "mlx*,hns*";
     int hook_index;
     int verbose_index;
     int progress_index;
     int tls_index;
     int devices_index;
+    int request_leak_check;
+    int multi_send_nb;
 
 #if HAVE_DECL_UCP_WORKER_FLAG_IGNORE_REQUEST_LEAK
     int request_leak_check;
@@ -306,7 +308,8 @@ OPAL_DECLSPEC opal_common_ucx_support_level_t opal_common_ucx_support_level(ucp_
 
     /* Check for special value "any" */
     if (is_any_tl && is_any_device) {
-        MCA_COMMON_UCX_VERBOSE(1, "ucx is enabled on any transport or device");
+        MCA_COMMON_UCX_VERBOSE(1, "ucx is enabled on any transport or device from %s",
+                               *opal_common_ucx.tls);
         support_level = OPAL_COMMON_UCX_SUPPORT_DEVICE;
         goto out;
     }
@@ -663,8 +666,10 @@ int opal_common_ucx_open(const char *prefix,
     unsigned major_version, minor_version, release_number;
     ucp_context_attr_t attr;
     ucs_status_t status;
+    int just_query = 0;
 
-    if (opal_common_ucx.first_version != NULL) {
+    if (opal_common_ucx.ref_count++ > 0) {
+        just_query = 1;
         goto query;
     }
 
@@ -678,7 +683,7 @@ int opal_common_ucx_open(const char *prefix,
         MCA_COMMON_UCX_VERBOSE(1, "UCX is disabled because the run-time UCX"
                                " version is 1.8, which has a known catastrophic"
                                " issue");
-        return OPAL_ERROR;
+        goto open_error;
     }
 
     if ((major_version == 1) && (minor_version < 9)) {
@@ -692,7 +697,7 @@ int opal_common_ucx_open(const char *prefix,
     ucg_config_t *config;
     status = ucg_config_read(prefix, NULL, &config);
     if (UCS_OK != status) {
-        return OPAL_ERROR;
+        goto open_error;
     }
 
     status = ucg_init(ucg_params, config, &opal_common_ucx.ucg_context);
@@ -703,9 +708,9 @@ int opal_common_ucx_open(const char *prefix,
     ucg_config_release(config);
 #else
     ucp_config_t *config;
-    status = ucp_config_read("MPI", NULL, &config);
+    status = ucp_config_read(prefix, NULL, &config);
     if (UCS_OK != status) {
-        return OPAL_ERROR;
+        goto open_error;
     }
 
     status = ucp_init(ucp_params, config, &opal_common_ucx.ucp_context);
@@ -713,7 +718,7 @@ int opal_common_ucx_open(const char *prefix,
 #endif
 
     if (UCS_OK != status) {
-        return OPAL_ERROR;
+        goto open_error;
     }
 
 query:
@@ -728,15 +733,22 @@ query:
     }
 
     *request_size = attr.request_size;
+    if (just_query) {
+        return OPAL_SUCCESS;
+    }
 
     return OPAL_SUCCESS;
 
 cleanup_ctx:
 #ifdef HAVE_UCG
     ucg_cleanup(opal_common_ucx.ucg_context);
+    opal_common_ucx.ucg_context = NULL;
 #else
     ucp_cleanup(opal_common_ucx.ucp_context);
 #endif
+
+open_error:
+    opal_common_ucx.ucp_context = NULL; /* In case anyone comes querying */
     return OPAL_ERROR;
 }
 
@@ -786,6 +798,11 @@ static int opal_common_ucx_init_worker(int enable_mpi_threads)
     }
 #endif
 
+#if HAVE_DECL_UCP_WORKER_PARAM_FIELD_UUID
+    params.field_mask |= UCP_WORKER_PARAM_FIELD_UUID;
+    params.uuid       |= opal_process_info.myprocid.rank;
+#endif
+
     attr.field_mask = UCP_WORKER_ATTR_FIELD_THREAD_MODE;
     status = ucp_worker_query(opal_common_ucx.ucp_worker, &attr);
     if (UCS_OK != status) {
@@ -823,9 +840,8 @@ int opal_common_ucx_init(int enable_mpi_threads,
 {
     int rc;
 
-    if (opal_common_ucx.ref_count++ > 0) {
-        return (opal_common_ucx.first_version == NULL) ?
-                OPAL_ERROR : OPAL_SUCCESS;
+    if (opal_common_ucx.first_version != NULL) {
+        return OPAL_SUCCESS;
     }
 
     rc = opal_common_ucx_init_worker(enable_mpi_threads);
@@ -833,7 +849,6 @@ int opal_common_ucx_init(int enable_mpi_threads,
         return rc;
     }
 
-    /* Early bird gets the worm */
     rc = opal_common_ucx_send_worker_address(version);
     if (rc < 0) {
         MCA_COMMON_UCX_ERROR("Failed to send worker address")
