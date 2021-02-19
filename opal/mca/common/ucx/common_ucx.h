@@ -69,14 +69,14 @@ BEGIN_C_DECLS
 
 enum opal_common_ucx_req_type {
     OPAL_COMMON_UCX_REQUEST_TYPE_UCP = 0,
-#if HAVE_UCG
+#ifdef HAVE_UCG
     OPAL_COMMON_UCX_REQUEST_TYPE_UCG = 1,
 #endif
 };
 
 /* progress loop to allow call UCX/opal progress, while testing requests by type */
 /* used C99 for-statement variable initialization */
-#if HAVE_UCG
+#ifdef HAVE_UCG
 static inline void opal_progress_by_req(enum opal_common_ucx_req_type req_type,
                                         ucp_worker_h worker, void *req_obj,
                                         ucg_collective_progress_t progress_f)
@@ -152,7 +152,6 @@ typedef struct opal_common_ucx_module {
 
     unsigned                    ref_count;
     const mca_base_component_t *first_version;
-    bool                        cuda_initialized;
     bool                        request_leak_check;
     uint32_t                    op_attr_nonblocking;
 } opal_common_ucx_module_t;
