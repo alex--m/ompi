@@ -31,6 +31,8 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/constants.h"
 
+#include "ompi/mpi/c/mpi_api_pvars.h"
+
 #if OMPI_BUILD_MPI_PROFILING
 #if OPAL_HAVE_WEAK_SYMBOLS
 #pragma weak MPI_Init = PMPI_Init
@@ -47,6 +49,14 @@ int MPI_Init(int *argc, char ***argv)
     int provided;
     char *env;
     int required = MPI_THREAD_SINGLE;
+    int ret;
+    int is_initialized;
+
+    /* Don't re-initialize MPI if already iniitalized */
+    ret = MPI_Initialized(&is_initialized);
+    if (is_initialized) {
+        return MPI_SUCCESS;
+    }
 
     /* check for environment overrides for required thread level.  If
        there is, check to see that it is a valid/supported thread level.
@@ -85,6 +95,11 @@ int MPI_Init(int *argc, char ***argv)
     OPAL_CR_INIT_LIBRARY();
 
     SPC_INIT();
+
+#if defined(MPI_API_PVARS_ENABLE)
+    /* Initialize MPI API PVARs */
+    mpi_api_pvars_init();
+#endif
 
     return MPI_SUCCESS;
 }

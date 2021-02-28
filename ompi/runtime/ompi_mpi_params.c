@@ -87,6 +87,8 @@ static bool show_enviro_mca_params = false;
 static bool show_override_mca_params = false;
 static bool ompi_mpi_oversubscribe = false;
 
+static int g_ompi_mpi_register_params_initialized = 0;
+
 #if OPAL_ENABLE_FT_MPI
 int ompi_ftmpi_output_handle = 0;
 bool ompi_ftmpi_enabled = false;
@@ -96,6 +98,12 @@ bool ompi_ftmpi_enabled = false;
 int ompi_mpi_register_params(void)
 {
     int value;
+
+    /* Don't reinitialize (Due to Score-P plugin) */
+    if (g_ompi_mpi_register_params_initialized) {
+       return OMPI_SUCCESS;
+    }
+    g_ompi_mpi_register_params_initialized = 1;
 
 #if OPAL_ENABLE_FT_MPI
     mca_base_var_scope_t ftscope = MCA_BASE_VAR_SCOPE_READONLY;
@@ -111,7 +119,7 @@ int ompi_mpi_register_params(void)
     value = 0;
     (void) mca_base_var_register ("ompi", "mpi", "ft", "verbose",
                                   "Verbosity level of the ULFM MPI Fault Tolerance framework",
-                                  MCA_BASE_VAR_TYPE_INT, &mca_base_var_enum_verbose, 0, MCA_BASE_VAR_FLAG_SETTABLE,
+                                  MCA_BASE_VAR_TYPE_INT, NULL, 0, MCA_BASE_VAR_FLAG_SETTABLE,
                                   OPAL_INFO_LVL_8, MCA_BASE_VAR_SCOPE_LOCAL, &value);
 #if OPAL_ENABLE_FT_MPI
     if( 0 < value ) {

@@ -26,17 +26,17 @@
 #include "coll_han.h"
 #include "coll_han_dynamic.h"
 
-#define HAN_SUBCOM_SAVE_COLLECTIVE(FALLBACKS, COMM, HANM, COLL)          \
+#define HAN_SUBCOM_SAVE_COLLECTIVE(FALLBACKS, COMM, HANM, COLL)                  \
     do {                                                                         \
-        (FALLBACKS).COLL.COLL = (COMM)->c_coll->coll_ ## COLL;                   \
+        (FALLBACKS).COLL.module_fn.COLL = (COMM)->c_coll->coll_ ## COLL;         \
         (FALLBACKS).COLL.module = (COMM)->c_coll->coll_ ## COLL ## _module;      \
-        (COMM)->c_coll->coll_ ## COLL = (HANM)->fallback.COLL.COLL;              \
+        (COMM)->c_coll->coll_ ## COLL = (HANM)->fallback.COLL.module_fn.COLL;    \
         (COMM)->c_coll->coll_ ## COLL ## _module = (HANM)->fallback.COLL.module; \
     } while(0)
 
-#define HAN_SUBCOM_LOAD_COLLECTIVE(FALLBACKS, COMM, HANM, COLL)          \
+#define HAN_SUBCOM_LOAD_COLLECTIVE(FALLBACKS, COMM, HANM, COLL)                  \
     do {                                                                         \
-        (COMM)->c_coll->coll_ ## COLL = (FALLBACKS).COLL.COLL;                   \
+        (COMM)->c_coll->coll_ ## COLL = (FALLBACKS).COLL.module_fn.COLL;         \
         (COMM)->c_coll->coll_ ## COLL ## _module = (FALLBACKS).COLL.module;      \
     } while(0)
 
@@ -83,7 +83,7 @@ int mca_coll_han_comm_create_new(struct ompi_communicator_t *comm,
     /**
      * HAN is not yet optimized for a single process per node case, we should
      * avoid selecting it for collective communication support in such cases.
-     * However, in order to decide if this is tru, we need to know how many
+     * However, in order to decide if this is true, we need to know how many
      * local processes are on each node, a condition that cannot be verified
      * outside the MPI support (with PRRTE the info will be eventually available,
      * but we don't want to delay anything until then). We can achieve the same
