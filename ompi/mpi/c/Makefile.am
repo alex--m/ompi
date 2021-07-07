@@ -19,6 +19,7 @@
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
+# Copyright (c) 2021      Huawei Technologies Co., Ltd. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -262,6 +263,7 @@ interface_profile_sources = \
         group_translate_ranks.c \
         group_union.c \
         ibsend.c \
+        idle.c \
         improbe.c \
         imrecv.c \
         info_c2f.c \
