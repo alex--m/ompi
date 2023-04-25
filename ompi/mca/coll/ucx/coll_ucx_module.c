@@ -55,6 +55,10 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
         return OMPI_ERROR;
     }
 
+    if (mca_coll_ucx_component.get_imbalance) {
+        args.flags |= UCG_GROUP_CREATE_FLAG_TX_TIMESTAMP;
+    }
+
     /* Generate (temporary) rank-distance array */
     for (rank_idx = 0; rank_idx < args.member_count; rank_idx++) {
         struct ompi_proc_t *rank_iter =

@@ -129,6 +129,7 @@ interface_profile_sources = \
         comm_get_attr.c \
         comm_get_errhandler.c \
         comm_get_info.c \
+        comm_get_last_imbalance.c \
         comm_get_name.c \
         comm_get_parent.c \
         comm_group.c \

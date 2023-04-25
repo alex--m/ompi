@@ -337,6 +337,12 @@ static int mca_common_ucx_neighbors_query(ompi_communicator_t *comm,
 }
 
 static inline void
+mca_common_ucx_set_imbalance(ompi_communicator_t *comm,  double imbalance_time)
+{
+    comm->c_imbalance = imbalance_time;
+}
+
+static inline void
 mca_common_ucx_async_complete(ompi_request_t *request, ucs_status_t status)
 {
     mca_common_ucx_persistent_request_t *preq;
@@ -357,8 +363,9 @@ jmp_buf mca_common_ucx_blocking_collective_call;
 static inline void mca_common_ucx_imm_complete(void *req, ucs_status_t status)
 {
 #if OPAL_ENABLE_PROGRESS_THREADS == 0
-    longjmp(&mca_common_ucx_blocking_collective_call,
+    longjmp(mca_common_ucx_blocking_collective_call,
             ((status == UCS_OK) ? OPAL_SUCCESS : OPAL_ERROR) - 1);
+    assert(0);
 #else
     mca_common_ucx_async_complete(req, status);
 #endif
@@ -493,15 +500,16 @@ int mca_common_ucx_open(const char *prefix, size_t *request_size)
     ucb_params.super                    = &ucp_params;
     ucb_params.field_mask               = 0;
     ucg_params.super                    = &ucb_params;
-    ucg_params.field_mask               = UCG_PARAM_FIELD_NAME          |
-                                          UCG_PARAM_FIELD_ADDRESS_CB    |
-                                          UCG_PARAM_FIELD_NEIGHBORS_CB  |
-                                          UCG_PARAM_FIELD_DATATYPE_CB   |
-                                          UCG_PARAM_FIELD_REDUCE_OP_CB  |
-                                          UCG_PARAM_FIELD_COMPLETION_CB |
-                                          UCG_PARAM_FIELD_MPI_IN_PLACE  |
-                                          UCG_PARAM_FIELD_HANDLE_FAULT  |
-                                          UCG_PARAM_FIELD_JOB_INFO      |
+    ucg_params.field_mask               = UCG_PARAM_FIELD_NAME             |
+                                          UCG_PARAM_FIELD_ADDRESS_CB       |
+                                          UCG_PARAM_FIELD_NEIGHBORS_CB     |
+                                          UCG_PARAM_FIELD_DATATYPE_CB      |
+                                          UCG_PARAM_FIELD_REDUCE_OP_CB     |
+                                          UCG_PARAM_FIELD_COMPLETION_CB    |
+                                          UCG_PARAM_FIELD_SET_IMBALANCE_CB |
+                                          UCG_PARAM_FIELD_MPI_IN_PLACE     |
+                                          UCG_PARAM_FIELD_HANDLE_FAULT     |
+                                          UCG_PARAM_FIELD_JOB_INFO         |
                                           UCG_PARAM_FIELD_GLOBAL_INDEX;
     ucg_params.name                     = "Open MPI context";
     ucg_params.address.lookup_f         = (typeof(ucg_params.address.lookup_f))
@@ -532,6 +540,8 @@ int mca_common_ucx_open(const char *prefix, size_t *request_size)
                                           mca_common_ucx_imm_complete;
     ucg_params.completion.comp_cb_f[1]  = (ucg_collective_comp_cb_t)
                                           mca_common_ucx_async_complete;
+    ucg_params.set_imbalance_cb_f       = (ucg_collective_imbalance_set_cb_t)
+                                          mca_common_ucx_set_imbalance;
     ucg_params.mpi_in_place             = (void*)MPI_IN_PLACE;
     ucg_params.get_global_index_f       = (typeof(ucg_params.get_global_index_f))
                                           mca_coll_ucx_get_global_rank;
