@@ -760,7 +760,7 @@ int mca_pml_ucx_iprobe(int src, int tag, struct ompi_communicator_t* comm,
         *matched = 1;
         mca_pml_ucx_set_recv_status_public(mpi_status, UCS_OK, &info);
     } else  {
-        (++progress_count % opal_common_ucx.progress_iterations) ?
+        (++progress_count & opal_common_ucx.progress_iters_mask) ?
             (int)ucp_worker_progress(opal_common_ucx.ucp_worker) : opal_progress();
         *matched = 0;
     }
@@ -809,7 +809,7 @@ int mca_pml_ucx_improbe(int src, int tag, struct ompi_communicator_t* comm,
         *matched         = 1;
         mca_pml_ucx_set_recv_status_public(mpi_status, UCS_OK, &info);
     } else  {
-        (++progress_count % opal_common_ucx.progress_iterations) ?
+        (++progress_count & opal_common_ucx.progress_iters_mask) ?
             (int)ucp_worker_progress(opal_common_ucx.ucp_worker) : opal_progress();
         *matched = 0;
     }

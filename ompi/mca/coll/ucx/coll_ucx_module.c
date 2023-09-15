@@ -28,12 +28,14 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
 
     /* Fill in group initialization parameters */
     ucg_group_params_t args;
-    args.field_mask               = UCG_GROUP_PARAM_FIELD_MEMBER_COUNT |
+    args.field_mask               = UCG_GROUP_PARAM_FIELD_UCP_WORKER   |
+                                    UCG_GROUP_PARAM_FIELD_MEMBER_COUNT |
                                     UCG_GROUP_PARAM_FIELD_MEMBER_INDEX |
                                     UCG_GROUP_PARAM_FIELD_CB_CONTEXT   |
                                     UCG_GROUP_PARAM_FIELD_DISTANCES    |
                                     UCG_GROUP_PARAM_FIELD_NAME         |
                                     UCG_GROUP_PARAM_FIELD_FLAGS;
+    args.worker                   = opal_common_ucx.ucp_worker;
     args.member_count             = ompi_comm_size(comm);
     args.member_index             = ompi_comm_rank(comm);
     args.cb_context               = comm;
@@ -90,8 +92,7 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
     /* TODO: add support for comm->c_remote_comm  */
     /* TODO: add support for sparse group storage */
 
-    ucs_status_t error = ucg_group_create(opal_common_ucx.ucp_worker,
-                                          &args, &module->ucg_group);
+    ucs_status_t error = ucg_group_create(&args, &module->ucg_group);
 
     /* Examine comm_new return value */
     if (error != UCS_OK) {
@@ -99,6 +100,8 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
         return OMPI_ERROR;
     }
 
+    module->barrier_init  = NULL;
+    module->ibarrier_init = NULL;
     return OMPI_SUCCESS;
 }
 
@@ -147,7 +150,9 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
     module->super.coll_alltoallw                 = mca_coll_ucx_alltoallw;
     module->super.coll_barrier                   = mca_coll_ucx_barrier;
     module->super.coll_bcast                     = mca_coll_ucx_bcast;
-    module->super.coll_exscan                    = mca_coll_ucx_exscan;
+    module->super.coll_exscan                    = mca_coll_ucx_component.stable_reduce ?
+                                                   mca_coll_ucx_exscan_stable :
+                                                   mca_coll_ucx_exscan;
     module->super.coll_gather                    = mca_coll_ucx_gather;
     module->super.coll_gatherv                   = mca_coll_ucx_gatherv;
     module->super.coll_reduce                    = mca_coll_ucx_component.stable_reduce ?
@@ -159,7 +164,9 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
     module->super.coll_reduce_scatter_block      = mca_coll_ucx_component.stable_reduce ?
                                                    mca_coll_ucx_reduce_scatter_block_stable :
                                                    mca_coll_ucx_reduce_scatter_block;
-    module->super.coll_scan                      = mca_coll_ucx_scan;
+    module->super.coll_scan                      = mca_coll_ucx_component.stable_reduce ?
+                                                   mca_coll_ucx_scan_stable :
+                                                   mca_coll_ucx_scan;
     module->super.coll_scatter                   = mca_coll_ucx_scatter;
     module->super.coll_scatterv                  = mca_coll_ucx_scatterv;
 
@@ -174,7 +181,9 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
     module->super.coll_ialltoallw                = mca_coll_ucx_ialltoallw;
     module->super.coll_ibarrier                  = mca_coll_ucx_ibarrier;
     module->super.coll_ibcast                    = mca_coll_ucx_ibcast;
-    module->super.coll_iexscan                   = mca_coll_ucx_iexscan;
+    module->super.coll_iexscan                   = mca_coll_ucx_component.stable_reduce ?
+                                                   mca_coll_ucx_iexscan_stable :
+                                                   mca_coll_ucx_iexscan;
     module->super.coll_igather                   = mca_coll_ucx_igather;
     module->super.coll_igatherv                  = mca_coll_ucx_igatherv;
     module->super.coll_ireduce                   = mca_coll_ucx_component.stable_reduce ?
@@ -186,7 +195,9 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
     module->super.coll_ireduce_scatter_block     = mca_coll_ucx_component.stable_reduce ?
                                                    mca_coll_ucx_ireduce_scatter_block_stable :
                                                    mca_coll_ucx_ireduce_scatter_block;
-    module->super.coll_iscan                     = mca_coll_ucx_iscan;
+    module->super.coll_iscan                     = mca_coll_ucx_component.stable_reduce ?
+                                                   mca_coll_ucx_iscan_stable :
+                                                   mca_coll_ucx_iscan;
     module->super.coll_iscatter                  = mca_coll_ucx_iscatter;
     module->super.coll_iscatterv                 = mca_coll_ucx_iscatterv;
 
@@ -201,7 +212,9 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
     module->super.coll_alltoallw_init            = mca_coll_ucx_alltoallw_init;
     module->super.coll_barrier_init              = mca_coll_ucx_barrier_init;
     module->super.coll_bcast_init                = mca_coll_ucx_bcast_init;
-    module->super.coll_exscan_init               = mca_coll_ucx_exscan_init;
+    module->super.coll_exscan_init               = mca_coll_ucx_component.stable_reduce ?
+                                                   mca_coll_ucx_exscan_stable_init :
+                                                   mca_coll_ucx_exscan_init;
     module->super.coll_gather_init               = mca_coll_ucx_gather_init;
     module->super.coll_gatherv_init              = mca_coll_ucx_gatherv_init;
     module->super.coll_reduce_init               = mca_coll_ucx_component.stable_reduce ?
@@ -213,7 +226,9 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
     module->super.coll_reduce_scatter_block_init = mca_coll_ucx_component.stable_reduce ?
                                                    mca_coll_ucx_reduce_scatter_block_stable_init :
                                                    mca_coll_ucx_reduce_scatter_block_init;
-    module->super.coll_scan_init                 = mca_coll_ucx_scan_init;
+    module->super.coll_scan_init                 = mca_coll_ucx_component.stable_reduce ?
+                                                   mca_coll_ucx_scan_stable_init :
+                                                   mca_coll_ucx_scan_init;
     module->super.coll_scatter_init              = mca_coll_ucx_scatter_init;
     module->super.coll_scatterv_init             = mca_coll_ucx_scatterv_init;
 
@@ -237,9 +252,29 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
     module->super.coll_neighbor_alltoall_init    = mca_coll_ucx_neighbor_alltoall_init;
     module->super.coll_neighbor_alltoallv_init   = mca_coll_ucx_neighbor_alltoallv_init;
     module->super.coll_neighbor_alltoallw_init   = mca_coll_ucx_neighbor_alltoallw_init;
+
+    /*
+        Not supported yet:
+        ==================
+        mca_coll_base_module_reduce_local_fn_t coll_reduce_local;
+        mca_coll_base_module_2_4_0_t *coll_reduce_local_module;
+        mca_coll_base_module_agree_fn_t coll_agree;
+        mca_coll_base_module_2_4_0_t *coll_agree_module;
+        mca_coll_base_module_iagree_fn_t coll_iagree;
+        mca_coll_base_module_2_4_0_t *coll_iagree_module;
+    */
 }
 
-static void mca_coll_ucx_module_destruct(mca_coll_ucx_module_t *module) {
+static void mca_coll_ucx_module_destruct(mca_coll_ucx_module_t *module)
+{
+    if (module->barrier_init != NULL) {
+        ucg_collective_destroy(module->barrier_init);
+    }
+
+    if (module->ibarrier_init != NULL) {
+        ucg_collective_destroy(module->ibarrier_init);
+    }
+
     ucg_group_destroy(module->ucg_group);
 }
 

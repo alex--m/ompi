@@ -9,8 +9,9 @@
 
 #include "ompi_config.h"
 
-#if HAVE_UCG
+#ifdef HAVE_UCG
 #include <ucg/api/ucg.h>
+#include <setjmp.h>
 #endif
 
 #include "common_ucx.h"
@@ -188,7 +189,7 @@ static void mca_common_ucx_completed_request_init(ompi_request_t *ompi_req)
     ompi_request_complete(ompi_req, false);
 }
 
-#if HAVE_UCG
+#ifdef HAVE_UCG
 static int mca_common_ucx_datatype_convert(ompi_datatype_t *mpi_dt,
                                            ucp_datatype_t *ucp_dt)
 {
@@ -214,20 +215,48 @@ static int mca_common_ucx_is_dtype_fp(ompi_datatype_t *dtype)
     return (dtype->super.flags & OMPI_DATATYPE_FLAG_DATA_FLOAT);
 }
 
-static int mca_common_ucx_is_op_sum(ompi_op_t *op)
-{
-    return (op == &ompi_mpi_op_sum.op);
-}
+static int mca_common_ucx_get_operator(ompi_op_t *op,
+                                       enum ucg_operator *operator,
+                                       int *want_location, int *is_commutative)
 
-static int mca_common_ucx_is_op_loc(ompi_op_t *op)
 {
-    return ((op == &ompi_mpi_op_minloc.op) ||
-            (op == &ompi_mpi_op_maxloc.op));
-}
+    int location = 0;
 
-static int mca_common_ucx_is_commutative(ompi_op_t *op)
-{
-    return ompi_op_is_commute(op);
+    if (op == &ompi_mpi_op_maxloc.op) {
+        location = 1;
+        *operator = UCG_OPERATOR_MAX;
+    } else if (op == &ompi_mpi_op_max.op) {
+        *operator = UCG_OPERATOR_MAX;
+    } else if (op == &ompi_mpi_op_minloc.op) {
+        location = 1;
+        *operator = UCG_OPERATOR_MIN;
+    } else if (op == &ompi_mpi_op_min.op) {
+        *operator = UCG_OPERATOR_MIN;
+    } else if (op == &ompi_mpi_op_sum.op) {
+        *operator = UCG_OPERATOR_SUM;
+    } else if (op == &ompi_mpi_op_prod.op) {
+        *operator = UCG_OPERATOR_PROD;
+    } else if (op == &ompi_mpi_op_land.op) {
+        *operator = UCG_OPERATOR_LAND;
+    } else if (op == &ompi_mpi_op_band.op) {
+        *operator = UCG_OPERATOR_BAND;
+    } else if (op == &ompi_mpi_op_lor.op) {
+        *operator = UCG_OPERATOR_LOR;
+    } else if (op == &ompi_mpi_op_bor.op) {
+        *operator = UCG_OPERATOR_BOR;
+    } else if (op == &ompi_mpi_op_lxor.op) {
+        *operator = UCG_OPERATOR_LXOR;
+    } else if (op == &ompi_mpi_op_bxor.op) {
+        *operator = UCG_OPERATOR_BXOR;
+    } else if (op == &ompi_mpi_op_no_op.op) {
+        *operator = UCG_OPERATOR_NOP;
+    } else {
+        return -1;
+    }
+
+    *is_commutative = ompi_op_is_commute(op);
+    *want_location  = location;
+    return 0;
 }
 
 static int mca_common_ucx_resolve_address(ompi_communicator_t *comm,
@@ -335,11 +364,32 @@ static int mca_common_ucx_neighbors_query(ompi_communicator_t *comm,
     return 0;
 }
 
-static void mca_common_ucx_collective_completion(ompi_request_t *request,
-                                                 ucs_status_t status)
+static inline void
+mca_common_ucx_async_complete(ompi_request_t *request, ucs_status_t status)
 {
+    mca_common_ucx_persistent_request_t *preq;
+
     mca_common_ucx_set_status(&request->req_status, status);
     ompi_request_complete(request, true);
+
+    if (request->req_persistent) {
+        preq = (mca_common_ucx_persistent_request_t*)request->req_complete_cb_data;
+        if (preq != NULL) {
+            MCA_COMMON_UCX_ASSERT(preq->tmp_req != NULL);
+            mca_common_ucx_persistent_request_complete(preq, request);
+        }
+    }
+}
+
+jmp_buf mca_common_ucx_blocking_collective_call;
+static inline void mca_common_ucx_imm_complete(void *req, ucs_status_t status)
+{
+#if OPAL_ENABLE_PROGRESS_THREADS == 0
+    longjmp(&mca_common_ucx_blocking_collective_call,
+            ((status == UCS_OK) ? OPAL_SUCCESS : OPAL_ERROR) - 1);
+#else
+    mca_common_ucx_async_complete(req, status);
+#endif
 }
 
 static int mca_coll_ucx_get_global_rank(ompi_communicator_t *comm,
@@ -352,46 +402,6 @@ static int mca_coll_ucx_get_global_rank(ompi_communicator_t *comm,
 
     return 0;
 }
-
-/* TODO: put back in...
-static void mca_coll_ucg_init_is_socket_balance(ucg_group_params_t *group_params,
-                                                mca_coll_ucx_module_t *module,
-                                                struct ompi_communicator_t *comm)
-{
-    unsigned pps = ucg_builtin_calculate_ppx(group_params, UCG_GROUP_MEMBER_DISTANCE_SOCKET);
-    unsigned ppn = ucg_builtin_calculate_ppx(group_params, UCG_GROUP_MEMBER_DISTANCE_HOST);
-    char is_socket_balance = (pps == (ppn - pps) || pps == ppn);
-    char result = is_socket_balance;
-    int status = ompi_coll_base_allreduce_intra_basic_linear(&is_socket_balance, &result, 1, MPI_CHAR, MPI_MIN,
-                                                             comm, &module->super);
-    if (status != OMPI_SUCCESS) {
-        int error = MPI_ERR_INTERN;
-        COLL_UCX_ERROR("ompi_coll_base_allreduce_intra_basic_linear failed");
-        ompi_mpi_errors_are_fatal_comm_handler(NULL, &error, "Failed to init is_socket_balance");
-    }
-    group_params->is_socket_balance = result;
-    return;
-}
-
-
-static void mca_coll_ucg_init_is_socket_balance(ucg_group_params_t *group_params, mca_coll_ucx_module_t *module,
-                                                struct ompi_communicator_t *comm)
-{
-    unsigned pps = ucg_builtin_calculate_ppx(group_params, UCG_GROUP_MEMBER_DISTANCE_SOCKET);
-    unsigned ppn = ucg_builtin_calculate_ppx(group_params, UCG_GROUP_MEMBER_DISTANCE_HOST);
-    char is_socket_balance = (pps == (ppn - pps) || pps == ppn);
-    char result = is_socket_balance;
-    int status = ompi_coll_base_allreduce_intra_basic_linear(&is_socket_balance, &result, 1, MPI_CHAR, MPI_MIN,
-                                                             comm, &module->super);
-    if (status != OMPI_SUCCESS) {
-        int error = MPI_ERR_INTERN;
-        COLL_UCX_ERROR("ompi_coll_base_allreduce_intra_basic_linear failed");
-        ompi_mpi_errors_are_fatal_comm_handler(NULL, &error, "Failed to init is_socket_balance");
-    }
-    group_params->is_socket_balance = result;
-    return;
-}
-*/
 
 /* See prte_rmaps_base_print_mapping() for the string values */
 static char *distance_lookup[] = {
@@ -502,13 +512,17 @@ int mca_common_ucx_open(const char *prefix, size_t *request_size)
     }
 #endif
 
-#if HAVE_UCG
+#ifdef HAVE_UCG
+    ucb_params_t ucb_params;
     ucg_params_t ucg_params;
 
     /* Initialize UCG context parameters */
     ucp_params.features                |= UCP_FEATURE_GROUPS;
-    ucg_params.super                    = &ucp_params;
-    ucg_params.field_mask               = UCG_PARAM_FIELD_ADDRESS_CB    |
+    ucb_params.super                    = &ucp_params;
+    ucb_params.field_mask               = 0;
+    ucg_params.super                    = &ucb_params;
+    ucg_params.field_mask               = UCG_PARAM_FIELD_NAME          |
+                                          UCG_PARAM_FIELD_ADDRESS_CB    |
                                           UCG_PARAM_FIELD_NEIGHBORS_CB  |
                                           UCG_PARAM_FIELD_DATATYPE_CB   |
                                           UCG_PARAM_FIELD_REDUCE_OP_CB  |
@@ -538,14 +552,12 @@ int mca_common_ucx_open(const char *prefix, size_t *request_size)
                                               mca_common_ucx_is_dtype_fp;
     ucg_params.reduce_op.reduce_cb_f    = (typeof(ucg_params.reduce_op.reduce_cb_f))
                                           ompi_op_reduce;
-    ucg_params.reduce_op.is_sum_f       = (typeof(ucg_params.reduce_op.is_sum_f))
-                                          mca_common_ucx_is_op_sum;
-    ucg_params.reduce_op.is_loc_expected_f = (typeof(ucg_params.reduce_op.is_loc_expected_f))
-                                             mca_common_ucx_is_op_loc;
-    ucg_params.reduce_op.is_commutative_f = (typeof(ucg_params.reduce_op.is_commutative_f))
-                                            mca_common_ucx_is_commutative;
-    ucg_params.completion.coll_comp_cb_f = (typeof(ucg_params.completion.coll_comp_cb_f))
-                                           mca_common_ucx_collective_completion;
+    ucg_params.reduce_op.get_operator_f = (typeof(ucg_params.reduce_op.get_operator_f))
+                                          mca_common_ucx_get_operator;
+    ucg_params.completion.comp_cb_f[0]  = (ucg_collective_comp_cb_t)
+                                          mca_common_ucx_imm_complete;
+    ucg_params.completion.comp_cb_f[1]  = (ucg_collective_comp_cb_t)
+                                          mca_common_ucx_async_complete;
     ucg_params.mpi_in_place             = (void*)MPI_IN_PLACE;
     ucg_params.get_global_index_f       = (typeof(ucg_params.get_global_index_f))
                                           mca_coll_ucx_get_global_rank;
