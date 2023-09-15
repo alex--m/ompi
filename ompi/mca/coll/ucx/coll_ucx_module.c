@@ -21,26 +21,32 @@
 static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
                                struct ompi_communicator_t *comm)
 {
+    ucs_status_t error;
+    ucg_group_params_t args;
+    ucg_group_member_index_t rank_idx;
+    ucg_context_h ucg_ctx = opal_common_ucx.ucg_context;
+
 #if OMPI_GROUP_SPARSE
     COLL_UCX_ERROR("Sparse process groups are not supported");
     return UCS_ERR_UNSUPPORTED;
 #endif
 
     /* Fill in group initialization parameters */
-    ucg_group_params_t args;
     args.field_mask               = UCG_GROUP_PARAM_FIELD_UCP_WORKER   |
                                     UCG_GROUP_PARAM_FIELD_MEMBER_COUNT |
                                     UCG_GROUP_PARAM_FIELD_MEMBER_INDEX |
                                     UCG_GROUP_PARAM_FIELD_CB_CONTEXT   |
                                     UCG_GROUP_PARAM_FIELD_DISTANCES    |
                                     UCG_GROUP_PARAM_FIELD_NAME         |
-                                    UCG_GROUP_PARAM_FIELD_FLAGS;
+                                    UCG_GROUP_PARAM_FIELD_FLAGS        |
+                                    UCG_GROUP_PARAM_FIELD_WIREUP_POOL;
     args.worker                   = opal_common_ucx.ucp_worker;
     args.member_count             = ompi_comm_size(comm);
     args.member_index             = ompi_comm_rank(comm);
     args.cb_context               = comm;
     args.name                     = comm->c_name;
     args.flags                    = 0;
+    args.wireup_pool              = ucg_context_get_wireup_message_pool(ucg_ctx);
     args.distance_type            = UCG_GROUP_DISTANCE_TYPE_ARRAY;
     args.distance_array           = alloca(args.member_count *
                                            sizeof(*args.distance_array));
@@ -50,7 +56,6 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
     }
 
     /* Generate (temporary) rank-distance array */
-    ucg_group_member_index_t rank_idx;
     for (rank_idx = 0; rank_idx < args.member_count; rank_idx++) {
         struct ompi_proc_t *rank_iter =
                 (struct ompi_proc_t*)ompi_comm_peer_lookup(comm, rank_idx);
@@ -92,9 +97,8 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
     /* TODO: add support for comm->c_remote_comm  */
     /* TODO: add support for sparse group storage */
 
-    ucs_status_t error = ucg_group_create(&args, &module->ucg_group);
-
     /* Examine comm_new return value */
+    error = ucg_group_create(&args, &module->ucg_group);
     if (error != UCS_OK) {
         COLL_UCX_ERROR("ucg_group_create failed: %s", ucs_status_string(error));
         return OMPI_ERROR;
