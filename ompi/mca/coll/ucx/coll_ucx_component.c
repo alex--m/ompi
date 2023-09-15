@@ -78,7 +78,8 @@ mca_coll_ucx_comm_query(struct ompi_communicator_t *comm, int *priority)
 
     /* create a new module for this communicator */
     COLL_UCX_VERBOSE(10,"Creating ucx_context for comm %p, comm_id %d, comm_size %d",
-                 (void*)comm, comm->c_contextid, ompi_comm_size(comm));
+                     (void*)comm, ompi_comm_get_local_cid(comm),
+                     ompi_comm_size(comm));
     mca_coll_ucx_module_t *ucx_module = OBJ_NEW(mca_coll_ucx_module_t);
     if (!ucx_module) {
         return NULL;

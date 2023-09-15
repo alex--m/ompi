@@ -136,126 +136,88 @@ static int mca_coll_ucx_module_enable(mca_coll_base_module_t *module,
     return OMPI_SUCCESS;
 }
 
+#define MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, \
+                                                     _lower_name, _params, \
+                                                     _want_stable_reduce, \
+                                                     _stable_suffix, \
+                                                     _prefix, _suffix) \
+    (_params).type.modifiers = UCG_PRIMITIVE_ ## _upper_name; \
+    if (strcmp(#_lower_name, "alltoallv") && \
+        strcmp(#_lower_name, "alltoallw") && \
+        strcmp(#_lower_name, "neighbor_alltoallv") && \
+        strcmp(#_lower_name, "neighbor_alltoallw")) { \
+        (_params).type.modifiers |= UCG_GROUP_COLLECTIVE_MODIFIER_TYPE_VALID; \
+    } \
+    \
+    if (ucg_collective_is_supported(&(_params)) == UCS_OK) { \
+        module->super.coll_ ## _prefix ## _lower_name ## _suffix = \
+            (_want_stable_reduce) ? \
+            mca_coll_ucx_ ## _prefix ## _lower_name ## _stable_suffix ## _suffix : \
+            mca_coll_ucx_ ## _prefix ## _lower_name ## _suffix; \
+    }
+
+#define MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
+                                              _params, _want_stable_reduce, \
+                                              _stable_suffix) \
+MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
+                                             _params, _want_stable_reduce, \
+                                             _stable_suffix, , ) \
+MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
+                                             _params, _want_stable_reduce, \
+                                             _stable_suffix, i, ) \
+MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
+                                             _params, _want_stable_reduce, \
+                                             _stable_suffix, , _init)
+
+#define MCA_COLL_UCX_MODULE_SET_COLL(_module, _upper_name, _lower_name, _params) \
+    MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
+                                          _params, 0, )
+
+#define MCA_COLL_UCX_MODULE_SET_COLL_STABLE(_module, _upper_name, _lower_name, \
+                                            _params, _want_stable_reduce) \
+    MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
+                                          _params, _want_stable_reduce, _stable)
+
 static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
 {
+    ucg_collective_support_params_t params = {
+        .query = UCG_COLLECTIVE_SUPPORT_QUERY_BY_TYPE
+    };
+
     memset(&module->super.super + 1, 0,
            sizeof(*module) - sizeof(module->super.super));
 
-    module->super.coll_module_enable             = mca_coll_ucx_module_enable;
+    module->super.coll_module_enable = mca_coll_ucx_module_enable;
 
-    /* blocking functions */
-    module->super.coll_allgather                 = mca_coll_ucx_allgather;
-    module->super.coll_allgatherv                = mca_coll_ucx_allgatherv;
-    module->super.coll_allreduce                 = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_allreduce_stable :
-                                                   mca_coll_ucx_allreduce;
-    module->super.coll_alltoall                  = mca_coll_ucx_alltoall;
-    module->super.coll_alltoallv                 = mca_coll_ucx_alltoallv;
-    module->super.coll_alltoallw                 = mca_coll_ucx_alltoallw;
-    module->super.coll_barrier                   = mca_coll_ucx_barrier;
-    module->super.coll_bcast                     = mca_coll_ucx_bcast;
-    module->super.coll_exscan                    = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_exscan_stable :
-                                                   mca_coll_ucx_exscan;
-    module->super.coll_gather                    = mca_coll_ucx_gather;
-    module->super.coll_gatherv                   = mca_coll_ucx_gatherv;
-    module->super.coll_reduce                    = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_reduce_stable :
-                                                   mca_coll_ucx_reduce;
-    module->super.coll_reduce_scatter            = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_reduce_scatter_stable :
-                                                   mca_coll_ucx_reduce_scatter;
-    module->super.coll_reduce_scatter_block      = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_reduce_scatter_block_stable :
-                                                   mca_coll_ucx_reduce_scatter_block;
-    module->super.coll_scan                      = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_scan_stable :
-                                                   mca_coll_ucx_scan;
-    module->super.coll_scatter                   = mca_coll_ucx_scatter;
-    module->super.coll_scatterv                  = mca_coll_ucx_scatterv;
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLGATHER,           allgather,           params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLGATHERV,          allgatherv,          params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALL,            alltoall,            params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALLV,           alltoallv,           params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALLW,           alltoallw,           params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, BARRIER,             barrier,             params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, BCAST,               bcast,               params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, GATHER,              gather,              params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, GATHERV,             gatherv,             params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, SCATTER,             scatter,             params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, SCATTERV,            scatterv,            params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLGATHER,  neighbor_allgather,  params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLGATHERV, neighbor_allgatherv, params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALL,   neighbor_alltoall,   params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALLV,  neighbor_alltoallv,  params);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALLW,  neighbor_alltoallw,  params);
 
-    /* nonblocking functions */
-    module->super.coll_iallgather                = mca_coll_ucx_iallgather;
-    module->super.coll_iallgatherv               = mca_coll_ucx_iallgatherv;
-    module->super.coll_iallreduce                = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_iallreduce_stable :
-                                                   mca_coll_ucx_iallreduce;
-    module->super.coll_ialltoall                 = mca_coll_ucx_ialltoall;
-    module->super.coll_ialltoallv                = mca_coll_ucx_ialltoallv;
-    module->super.coll_ialltoallw                = mca_coll_ucx_ialltoallw;
-    module->super.coll_ibarrier                  = mca_coll_ucx_ibarrier;
-    module->super.coll_ibcast                    = mca_coll_ucx_ibcast;
-    module->super.coll_iexscan                   = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_iexscan_stable :
-                                                   mca_coll_ucx_iexscan;
-    module->super.coll_igather                   = mca_coll_ucx_igather;
-    module->super.coll_igatherv                  = mca_coll_ucx_igatherv;
-    module->super.coll_ireduce                   = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_ireduce_stable :
-                                                   mca_coll_ucx_ireduce;
-    module->super.coll_ireduce_scatter           = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_ireduce_scatter_stable :
-                                                   mca_coll_ucx_ireduce_scatter;
-    module->super.coll_ireduce_scatter_block     = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_ireduce_scatter_block_stable :
-                                                   mca_coll_ucx_ireduce_scatter_block;
-    module->super.coll_iscan                     = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_iscan_stable :
-                                                   mca_coll_ucx_iscan;
-    module->super.coll_iscatter                  = mca_coll_ucx_iscatter;
-    module->super.coll_iscatterv                 = mca_coll_ucx_iscatterv;
-
-    /* persistent functions */
-    module->super.coll_allgather_init            = mca_coll_ucx_allgather_init;
-    module->super.coll_allgatherv_init           = mca_coll_ucx_allgatherv_init;
-    module->super.coll_allreduce_init            = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_allreduce_stable_init :
-                                                   mca_coll_ucx_allreduce_init;
-    module->super.coll_alltoall_init             = mca_coll_ucx_alltoall_init;
-    module->super.coll_alltoallv_init            = mca_coll_ucx_alltoallv_init;
-    module->super.coll_alltoallw_init            = mca_coll_ucx_alltoallw_init;
-    module->super.coll_barrier_init              = mca_coll_ucx_barrier_init;
-    module->super.coll_bcast_init                = mca_coll_ucx_bcast_init;
-    module->super.coll_exscan_init               = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_exscan_stable_init :
-                                                   mca_coll_ucx_exscan_init;
-    module->super.coll_gather_init               = mca_coll_ucx_gather_init;
-    module->super.coll_gatherv_init              = mca_coll_ucx_gatherv_init;
-    module->super.coll_reduce_init               = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_reduce_stable_init :
-                                                   mca_coll_ucx_reduce_init;
-    module->super.coll_reduce_scatter_init       = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_reduce_scatter_stable_init :
-                                                   mca_coll_ucx_reduce_scatter_init;
-    module->super.coll_reduce_scatter_block_init = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_reduce_scatter_block_stable_init :
-                                                   mca_coll_ucx_reduce_scatter_block_init;
-    module->super.coll_scan_init                 = mca_coll_ucx_component.stable_reduce ?
-                                                   mca_coll_ucx_scan_stable_init :
-                                                   mca_coll_ucx_scan_init;
-    module->super.coll_scatter_init              = mca_coll_ucx_scatter_init;
-    module->super.coll_scatterv_init             = mca_coll_ucx_scatterv_init;
-
-    /* neighborhood functions */
-    module->super.coll_neighbor_allgather        = mca_coll_ucx_neighbor_allgather;
-    module->super.coll_neighbor_allgatherv       = mca_coll_ucx_neighbor_allgatherv;
-    module->super.coll_neighbor_alltoall         = mca_coll_ucx_neighbor_alltoall;
-    module->super.coll_neighbor_alltoallv        = mca_coll_ucx_neighbor_alltoallv;
-    module->super.coll_neighbor_alltoallw        = mca_coll_ucx_neighbor_alltoallw;
-
-    /* nonblocking neighborhood functions */
-    module->super.coll_ineighbor_allgather       = mca_coll_ucx_ineighbor_allgather;
-    module->super.coll_ineighbor_allgatherv      = mca_coll_ucx_ineighbor_allgatherv;
-    module->super.coll_ineighbor_alltoall        = mca_coll_ucx_ineighbor_alltoall;
-    module->super.coll_ineighbor_alltoallv       = mca_coll_ucx_ineighbor_alltoallv;
-    module->super.coll_ineighbor_alltoallw       = mca_coll_ucx_ineighbor_alltoallw;
-
-    /* persistent neighborhood functions */
-    module->super.coll_neighbor_allgather_init   = mca_coll_ucx_neighbor_allgather_init;
-    module->super.coll_neighbor_allgatherv_init  = mca_coll_ucx_neighbor_allgatherv_init;
-    module->super.coll_neighbor_alltoall_init    = mca_coll_ucx_neighbor_alltoall_init;
-    module->super.coll_neighbor_alltoallv_init   = mca_coll_ucx_neighbor_alltoallv_init;
-    module->super.coll_neighbor_alltoallw_init   = mca_coll_ucx_neighbor_alltoallw_init;
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, ALLREDUCE, allreduce, params,
+                                        mca_coll_ucx_component.stable_reduce);
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, EXSCAN, exscan, params,
+                                        mca_coll_ucx_component.stable_reduce);
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE, reduce, params,
+                                        mca_coll_ucx_component.stable_reduce);
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE_SCATTER, reduce_scatter, params,
+                                        mca_coll_ucx_component.stable_reduce);
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE_SCATTER_BLOCK, reduce_scatter_block, params,
+                                        mca_coll_ucx_component.stable_reduce);
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, SCAN, scan, params,
+                                        mca_coll_ucx_component.stable_reduce);
 
     /*
         Not supported yet:
