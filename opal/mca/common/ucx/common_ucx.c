@@ -21,10 +21,6 @@
 
 #include "opal_config.h"
 
-#ifdef HAVE_UCG
-#include <ucg/api/ucg.h>
-#endif
-
 #include "common_ucx.h"
 #include "opal/mca/base/mca_base_framework.h"
 #include "opal/mca/base/mca_base_var.h"
@@ -32,6 +28,7 @@
 #include "opal/memoryhooks/memory.h"
 #include "opal/util/argv.h"
 #include "opal/util/printf.h"
+#include "opal/util/bit_ops.h"
 
 #include "mpi.h"
 
@@ -45,7 +42,7 @@ extern mca_base_framework_t opal_memory_base_framework;
 
 opal_common_ucx_module_t opal_common_ucx = {
     .verbose = 0,
-    .progress_iterations = 100,
+    .progress_iters_mask = 100,
     .registered = 0,
     .opal_mem_hooks = 1,
     .tls = NULL,
@@ -78,6 +75,11 @@ ucs_thread_mode_t opal_common_ucx_thread_mode(int ompi_mode)
     }
 }
 
+static void opal_common_ucx_convert_count_to_mask(unsigned *progress_iters_mask)
+{
+    *progress_iters_mask = opal_next_poweroftwo(*progress_iters_mask) - 1;
+}
+
 OPAL_DECLSPEC void opal_common_ucx_mca_var_register(const mca_base_component_t *component)
 {
     char *default_tls = "rc_verbs,ud_verbs,rc_mlx5,dc_mlx5,ud_mlx5,cuda_ipc,rocm_ipc";
@@ -87,8 +89,6 @@ OPAL_DECLSPEC void opal_common_ucx_mca_var_register(const mca_base_component_t *
     int progress_index;
     int tls_index;
     int devices_index;
-    int request_leak_check;
-    int multi_send_nb;
 
 #if HAVE_DECL_UCP_WORKER_FLAG_IGNORE_REQUEST_LEAK
     int request_leak_check;
@@ -112,7 +112,8 @@ OPAL_DECLSPEC void opal_common_ucx_mca_var_register(const mca_base_component_t *
                                            MCA_BASE_VAR_TYPE_INT, NULL, 0,
                                            MCA_BASE_VAR_FLAG_SETTABLE, OPAL_INFO_LVL_3,
                                            MCA_BASE_VAR_SCOPE_LOCAL,
-                                           &opal_common_ucx.progress_iterations);
+                                           &opal_common_ucx.progress_iters_mask);
+    opal_common_ucx_convert_count_to_mask(&opal_common_ucx.progress_iters_mask);
     hook_index = mca_base_var_register("opal", "opal_common", "ucx", "opal_mem_hooks",
                                        "Use OPAL memory hooks, instead of UCX internal "
                                        "memory hooks",
@@ -731,8 +732,10 @@ int opal_common_ucx_open(const char *prefix,
 
     status = ucg_init(ucg_params, config, &opal_common_ucx.ucg_context);
     if (UCS_OK == status) {
+        opal_common_ucx.ucb_context =
+                ucg_context_get_ucb(opal_common_ucx.ucg_context);
         opal_common_ucx.ucp_context =
-                ucg_context_get_ucp(opal_common_ucx.ucg_context);
+                ucb_context_get_ucp(opal_common_ucx.ucb_context);
     }
     ucg_config_release(config);
 #else
