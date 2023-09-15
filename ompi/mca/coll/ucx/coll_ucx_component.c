@@ -49,7 +49,8 @@ mca_coll_ucx_component_t mca_coll_ucx_component = {
         .collm_comm_query = mca_coll_ucx_comm_query,
     },
     91,  /* priority */
-    0    /* stable-reduce */
+    0,   /* stable_reduce */
+    0    /* get_imbalance*/
 };
 
 /*
@@ -108,6 +109,15 @@ static int mca_coll_ucx_component_register(void)
                                            OPAL_INFO_LVL_1,
                                            MCA_BASE_VAR_SCOPE_LOCAL,
                                            &mca_coll_ucx_component.stable_reduce);
+
+    mca_coll_ucx_component.get_imbalance = false;
+    (void) mca_base_component_var_register(&mca_coll_ucx_component.super.collm_version,
+                                           "get_imbalance",
+                                           "Whether to collect imbalance intervals",
+                                           MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                           OPAL_INFO_LVL_1,
+                                           MCA_BASE_VAR_SCOPE_LOCAL,
+                                           &mca_coll_ucx_component.get_imbalance);
 
     opal_common_ucx_mca_var_register(&mca_coll_ucx_component.super.collm_version);
     return OMPI_SUCCESS;

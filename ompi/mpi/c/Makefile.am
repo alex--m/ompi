@@ -108,6 +108,7 @@ prototype_sources = \
         comm_get_attr.c.in \
 	comm_get_errhandler.c.in \
 	comm_get_info.c.in \
+        comm_get_last_imbalance.c.in \
 	comm_get_name.c.in \
 	comm_get_parent.c.in \
 	comm_group.c.in \
