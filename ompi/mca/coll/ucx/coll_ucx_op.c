@@ -32,7 +32,7 @@
     } \
 
 #define COLL_UCX_REQEUST_PENDING(_ucg_req) \
-    (_ucg_req)->req_persistent  = 0; \
+    (_ucg_req)->req_persistent  = false; \
     (_ucg_req)->req_complete_cb = NULL; \
     (_ucg_req)->req_complete    = REQUEST_PENDING;
 

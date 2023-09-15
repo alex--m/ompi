@@ -370,15 +370,19 @@ mca_common_ucx_set_imbalance(ompi_communicator_t *comm,  double imbalance_time)
     comm->c_imbalance = imbalance_time;
 }
 
-static inline void
-mca_common_ucx_async_complete(ompi_request_t *request, ucs_status_t status)
+static __opal_attribute_always_inline__ void
+mca_common_ucx_async_complete(ompi_request_t *request, bool is_success,
+                              ucs_status_t status, bool is_req_persistent)
 {
     mca_common_ucx_persistent_request_t *preq;
 
     mca_common_ucx_set_status(&request->req_status, status);
     ompi_request_complete(request, true);
 
-    if (request->req_persistent) {
+    assert(is_success == (status == UCS_OK));
+    assert(is_req_persistent == request->req_persistent);
+
+    if (is_req_persistent) {
         preq = (mca_common_ucx_persistent_request_t*)request->req_complete_cb_data;
         if (preq != NULL) {
             MCA_COMMON_UCX_ASSERT(preq->tmp_req != NULL);
@@ -388,15 +392,61 @@ mca_common_ucx_async_complete(ompi_request_t *request, ucs_status_t status)
 }
 
 jmp_buf mca_common_ucx_blocking_collective_call;
-static inline void mca_common_ucx_imm_complete(void *req, ucs_status_t status)
+static __opal_attribute_always_inline__ void
+mca_common_ucx_imm_complete(void *req, bool is_success, ucs_status_t status,
+                            bool is_req_persistent)
 {
 #if OPAL_ENABLE_PROGRESS_THREADS == 0
+    assert(is_req_persistent == false);
+    assert(is_success == (status == UCS_OK));
+
     longjmp(mca_common_ucx_blocking_collective_call,
-            ((status == UCS_OK) ? OPAL_SUCCESS : OPAL_ERROR) - 1);
+            (is_success ? OPAL_SUCCESS : OPAL_ERROR) - 1);
+
     assert(0);
 #else
-    mca_common_ucx_async_complete(req, status);
+    mca_common_ucx_async_complete(req, is_success, status, is_req_persistent);
 #endif
+}
+
+static void mca_common_ucx_imm_success(void *req, ucs_status_t status)
+{
+    mca_common_ucx_imm_complete(req, true, status, false);
+}
+
+static void mca_common_ucx_imm_success_persistent(void *req, ucs_status_t status)
+{
+    mca_common_ucx_imm_complete(req, true, status, true);
+}
+
+static void mca_common_ucx_imm_failure(void *req, ucs_status_t status)
+{
+    mca_common_ucx_imm_complete(req, false, status, false);
+}
+
+static void mca_common_ucx_imm_failure_persistent(void *req, ucs_status_t status)
+{
+    mca_common_ucx_imm_complete(req, false, status, true);
+}
+
+static void mca_common_ucx_async_success(void *req, ucs_status_t status)
+{
+    mca_common_ucx_async_complete(req, true, status, false);
+}
+
+static void mca_common_ucx_async_success_persistent(void *req, ucs_status_t status)
+{
+    mca_common_ucx_async_complete(req, true, status, true);
+}
+
+static void mca_common_ucx_async_failure(void *req, ucs_status_t status)
+{
+    mca_common_ucx_async_complete(req, false, status, false);
+}
+
+static void mca_common_ucx_async_failure_persistent(void *req, ucs_status_t status)
+{
+    mca_common_ucx_async_complete(req, false, status, true);
 }
 
 static int mca_coll_ucx_get_global_rank(ompi_communicator_t *comm,
@@ -562,10 +612,22 @@ int mca_common_ucx_open(const char *prefix, size_t *request_size)
                                           ompi_op_reduce;
     ucg_params.reduce_op.get_operator_f = (typeof(ucg_params.reduce_op.get_operator_f))
                                           mca_common_ucx_get_operator;
-    ucg_params.completion.comp_cb_f[0]  = (ucg_collective_comp_cb_t)
-                                          mca_common_ucx_imm_complete;
-    ucg_params.completion.comp_cb_f[1]  = (ucg_collective_comp_cb_t)
-                                          mca_common_ucx_async_complete;
+    ucg_params.completion.comp_cb_f[0][0][0] = (ucg_collective_comp_cb_t)
+                                               mca_common_ucx_imm_success;
+    ucg_params.completion.comp_cb_f[0][0][1] = (ucg_collective_comp_cb_t)
+                                               mca_common_ucx_imm_success_persistent;
+    ucg_params.completion.comp_cb_f[0][1][0] = (ucg_collective_comp_cb_t)
+                                               mca_common_ucx_imm_failure;
+    ucg_params.completion.comp_cb_f[0][1][1] = (ucg_collective_comp_cb_t)
+                                               mca_common_ucx_imm_failure_persistent;
+    ucg_params.completion.comp_cb_f[1][0][0] = (ucg_collective_comp_cb_t)
+                                               mca_common_ucx_async_success;
+    ucg_params.completion.comp_cb_f[1][0][1] = (ucg_collective_comp_cb_t)
+                                               mca_common_ucx_async_success_persistent;
+    ucg_params.completion.comp_cb_f[1][1][0] = (ucg_collective_comp_cb_t)
+                                               mca_common_ucx_async_failure;
+    ucg_params.completion.comp_cb_f[1][1][1] = (ucg_collective_comp_cb_t)
+                                               mca_common_ucx_async_failure_persistent;
     ucg_params.set_imbalance_cb_f       = (ucg_collective_imbalance_set_cb_t)
                                           mca_common_ucx_set_imbalance;
     ucg_params.mpi_in_place             = (void*)MPI_IN_PLACE;
