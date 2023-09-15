@@ -452,6 +452,7 @@ static void ompi_comm_construct(ompi_communicator_t* comm)
     comm->c_nbc_tag      = MCA_COLL_BASE_TAG_NONBLOCKING_BASE;
     comm->instance       = NULL;
     comm->c_index_vec    = NULL;
+    comm->c_imbalance    = 0;
 
     /*
      * magic numerology - see TOPDIR/ompi/include/mpif-values.py
