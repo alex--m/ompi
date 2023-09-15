@@ -384,6 +384,7 @@ int mca_pml_ucx_recv(void *buf, size_t count, ompi_datatype_t *datatype, int src
 #endif
     ucp_tag_t ucp_tag, ucp_tag_mask;
     ucp_tag_recv_info_t info;
+    ucp_tag_recv_info_t *info_ptr = &info;
 
     PML_UCX_TRACE_RECV("%s", buf, count, datatype, src, tag, comm, "recv");
 
@@ -398,7 +399,7 @@ int mca_pml_ucx_recv(void *buf, size_t count, ompi_datatype_t *datatype, int src
                      ucp_tag, ucp_tag_mask, req);
 #endif
     MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
-                             opal_common_ucx.ucp_worker, "ucx recv", &info,
+                             opal_common_ucx.ucp_worker, "ucx recv", info_ptr,
                              return mca_pml_ucx_recv_complete(datatype, count,
                                                               status, &info,
                                                               mpi_status));
@@ -634,6 +635,7 @@ mca_pml_ucx_send_nb(ucp_ep_h ep, const void *buf, size_t count,
                     ucp_tag_t tag, mca_pml_base_send_mode_t mode)
 {
     ompi_request_t *req;
+    void *info = NULL;
 
     req = (ompi_request_t*)mca_pml_ucx_common_send(ep, buf, count, datatype,
                                                    mca_common_ucx_get_datatype(datatype),
@@ -644,7 +646,7 @@ mca_pml_ucx_send_nb(ucp_ep_h ep, const void *buf, size_t count,
     } else if (!UCS_PTR_IS_ERR(req)) {
         PML_UCX_VERBOSE(8, "got request %p", (void*)req);
         MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
-                                 opal_common_ucx.ucp_worker, "ucx send", NULL,
+                                 opal_common_ucx.ucp_worker, "ucx send", info,
                                  ucp_request_free(req));
     } else {
         PML_UCX_ERROR("ucx send failed: %s", ucs_status_string(UCS_PTR_STATUS(req)));
@@ -657,6 +659,7 @@ static inline __opal_attribute_always_inline__ int
 mca_pml_ucx_send_nbr(ucp_ep_h ep, const void *buf, size_t count,
                      ompi_datatype_t *datatype, ucp_tag_t tag)
 {
+    void *info = NULL;
     /* coverity[bad_alloc_arithmetic] */
     ucs_status_ptr_t req = PML_UCX_REQ_ALLOCA();
 #if HAVE_DECL_UCP_TAG_SEND_NBX
@@ -689,7 +692,7 @@ mca_pml_ucx_send_nbr(ucp_ep_h ep, const void *buf, size_t count,
 #endif
 
     MCA_COMMON_UCX_WAIT_LOOP(req, OPAL_COMMON_UCX_REQUEST_TYPE_UCP,
-                             opal_common_ucx.ucp_worker, "ucx send nbr", NULL,
+                             opal_common_ucx.ucp_worker, "ucx send nbr", info,
                              (void)0);
 }
 #endif
