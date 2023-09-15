@@ -20,7 +20,7 @@
  * addresses the need for higher-level components, i.e. PML and COLL, to have
  * a longer persistent context while sharing this piece of code.
  */
-#define MCA_COMMON_UCX_PERSISTENT_REQUEST_SLACK (64)
+#define MCA_COMMON_UCX_PERSISTENT_REQUEST_SLACK (72)
 
 typedef struct mca_common_ucx_persistent_request mca_common_ucx_persistent_request_t;
 typedef ompi_request_t* (*mca_common_ucx_persistent_start_cb_f)
