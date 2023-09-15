@@ -887,7 +887,7 @@ OPAL_DECLSPEC int opal_common_ucx_ctx_flush(opal_common_ucx_ctx_t *ctx,
                                     opal_common_ucx_flush_scope_t scope, int target)
 {
     int rc = OPAL_SUCCESS;
-    int spin = 0;
+    unsigned spin = 0;
 
     if (NULL == ctx) {
         return OPAL_SUCCESS;
@@ -905,7 +905,7 @@ OPAL_DECLSPEC int opal_common_ucx_ctx_flush(opal_common_ucx_ctx_t *ctx,
         if (rc != OPAL_SUCCESS) {
             return rc;
         }
-        if (spin == opal_common_ucx.progress_iterations) {
+        if (spin == opal_common_ucx.progress_iters_mask) {
             opal_progress();
             spin = 0;
         }

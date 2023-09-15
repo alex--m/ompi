@@ -48,12 +48,15 @@ typedef struct mca_coll_ucx_module {
 
     /* UCX per-communicator context */
     ucg_group_h            ucg_group;
+    ucg_coll_h             barrier_init;
+    ucg_coll_h             ibarrier_init;
 } mca_coll_ucx_module_t;
 OBJ_CLASS_DECLARATION(mca_coll_ucx_module_t);
 
 struct coll_ucx_persistent_request {
     mca_common_ucx_persistent_request_t super;
     ucg_coll_h                          pcoll;
+    ucg_collective_progress_t           progress_f;
 };
 
 /*
@@ -131,6 +134,9 @@ int mca_coll_ucx_bcast(void *buff, int count, struct ompi_datatype_t *datatype, 
 int mca_coll_ucx_exscan(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
 
+int mca_coll_ucx_exscan_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+   struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+
 int mca_coll_ucx_gather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
@@ -158,6 +164,9 @@ int mca_coll_ucx_reduce_scatter_block_stable(const void *sbuf, void *rbuf, int r
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_scan(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+   struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+
+int mca_coll_ucx_scan_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_scatter(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
@@ -204,6 +213,9 @@ int mca_coll_ucx_ibcast(void *buff, int count, struct ompi_datatype_t *datatype,
 int mca_coll_ucx_iexscan(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
 
+int mca_coll_ucx_iexscan_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+   struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
+
 int mca_coll_ucx_igather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
@@ -231,6 +243,9 @@ int mca_coll_ucx_ireduce_scatter_block_stable(const void *sbuf, void *rbuf, int 
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_iscan(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+   struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
+
+int mca_coll_ucx_iscan_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_iscatter(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
@@ -277,6 +292,9 @@ int mca_coll_ucx_bcast_init(void *buff, int count, struct ompi_datatype_t *datat
 int mca_coll_ucx_exscan_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
 
+int mca_coll_ucx_exscan_stable_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+   struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
+
 int mca_coll_ucx_gather_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
@@ -304,6 +322,9 @@ int mca_coll_ucx_reduce_scatter_block_stable_init(const void *sbuf, void *rbuf, 
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_scan_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+   struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
+
+int mca_coll_ucx_scan_stable_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_scatter_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
@@ -336,19 +357,19 @@ int mca_coll_ucx_neighbor_alltoallw(const void *sbuf, const int *scounts, const 
 
 int mca_coll_ucx_ineighbor_allgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+   struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_ineighbor_allgatherv(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void * rbuf, const int *rcounts, const int *disps,  struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+   struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_ineighbor_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+   struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_ineighbor_alltoallv(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t *sdtype,
    void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+   struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_ineighbor_alltoallw(const void *sbuf, const int *scounts, const MPI_Aint *sdisps, struct ompi_datatype_t * const *sdtypes,
    void *rbuf, const int *rcounts, const MPI_Aint *rdisps, struct ompi_datatype_t * const *rdtypes,
@@ -356,19 +377,19 @@ int mca_coll_ucx_ineighbor_alltoallw(const void *sbuf, const int *scounts, const
 
 int mca_coll_ucx_neighbor_allgather_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+   struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_neighbor_allgatherv_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void * rbuf, const int *rcounts, const int *disps,  struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+   struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_neighbor_alltoall_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
    void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+   struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_neighbor_alltoallv_init(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t *sdtype,
    void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
+   struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module);
 
 int mca_coll_ucx_neighbor_alltoallw_init(const void *sbuf, const int *scounts, const MPI_Aint *sdisps, struct ompi_datatype_t * const *sdtypes,
    void *rbuf, const int *rcounts, const MPI_Aint *rdisps, struct ompi_datatype_t * const *rdtypes,

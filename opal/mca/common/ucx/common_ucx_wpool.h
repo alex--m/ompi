@@ -296,7 +296,7 @@ int opal_common_ucx_wait_request_mt(ucs_status_ptr_t request,
     assert(winfo != NULL);
 
     do {
-        ctr = opal_common_ucx.progress_iterations;
+        ctr = opal_common_ucx.progress_iters_mask;
         opal_mutex_lock(&winfo->mutex);
         do {
             ret = ucp_worker_progress(winfo->worker);
