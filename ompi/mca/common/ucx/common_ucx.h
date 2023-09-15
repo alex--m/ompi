@@ -103,7 +103,18 @@ mca_common_ucx_persistent_request_complete(mca_common_ucx_persistent_request_t *
     preq->ompi.req_status = tmp_req->req_status;
     mca_common_ucx_request_reset(tmp_req);
     mca_common_ucx_persistent_request_detach(preq, tmp_req);
-    ucp_request_free(tmp_req);
+    switch (tmp_req->req_type) {
+        case OMPI_REQUEST_PML:
+            ucp_request_free(tmp_req);
+            break;
+#ifdef HAVE_UCG
+        case OMPI_REQUEST_COLL:
+            /* NOP, see mca_coll_ucx_persistent_request_t */
+            break;
+#endif
+        default:
+            return; /* should never happen */
+    }
     ompi_request_complete(&preq->ompi, true);
 }
 
