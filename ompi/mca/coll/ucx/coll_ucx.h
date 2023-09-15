@@ -40,6 +40,7 @@ typedef struct mca_coll_ucx_component {
     /* MCA parameters */
     int                       priority;
     bool                      stable_reduce;
+    bool                      get_imbalance;
 } mca_coll_ucx_component_t;
 extern mca_coll_ucx_component_t mca_coll_ucx_component;
 
