@@ -96,9 +96,13 @@ static inline void opal_progress_by_req(enum opal_common_ucx_req_type req_type,
 }
 
 #define MCA_COMMON_UCX_PROGRESS_LOOP_BY_REQ(_worker, _type, _req, _info) \
-    for (unsigned iter = 0;; (++iter & opal_common_ucx.progress_iters_mask)  \
-                                 ? opal_progress_by_req(_type, _worker,  \
-                                                        _req, _info)         \
+    void *orig_info = _info; \
+    if (_type == OPAL_COMMON_UCX_REQUEST_TYPE_UCG) { \
+        _info = (typeof(_info))ucg_collective_get_status_ptr(_req); \
+    } \
+    for (unsigned iter = 0;; (++iter & opal_common_ucx.progress_iters_mask) \
+                                 ? opal_progress_by_req(_type, _worker,     \
+                                                        _req, orig_info)    \
                                  : (void) opal_progress())
 #else
 #define MCA_COMMON_UCX_PROGRESS_LOOP_BY_REQ(_worker, _type, _req, _info) \
@@ -108,9 +112,10 @@ static inline void opal_progress_by_req(enum opal_common_ucx_req_type req_type,
 #endif
 
 #define MCA_COMMON_UCX_PROGRESS_LOOP(_worker)                                 \
+        void *dummy_info = NULL;                                              \
         MCA_COMMON_UCX_PROGRESS_LOOP_BY_REQ(_worker,                          \
                                             OPAL_COMMON_UCX_REQUEST_TYPE_UCP, \
-                                            NULL, NULL)
+                                            NULL, dummy_info)
 
 #define MCA_COMMON_UCX_WAIT_LOOP(_request, _req_type, _worker, _msg, _info, _completed)  \
     do {                                                                                 \
@@ -258,7 +263,7 @@ ucs_status_t opal_common_ucx_request_status(ucs_status_ptr_t request,
 
 #ifdef HAVE_UCG
     case OPAL_COMMON_UCX_REQUEST_TYPE_UCG:
-        return ucg_collective_check_status(request);
+        return *(volatile ucs_status_t*)info;
 #endif
 
     default:
@@ -272,6 +277,8 @@ int opal_common_ucx_wait_request(ucs_status_ptr_t request, ucp_worker_h worker,
                                  enum opal_common_ucx_req_type type,
                                  const char *msg)
 {
+    void *info = NULL;
+
     /* check for request completed or failed */
     if (OPAL_LIKELY(UCS_OK == request)) {
         return OPAL_SUCCESS;
@@ -281,7 +288,7 @@ int opal_common_ucx_wait_request(ucs_status_ptr_t request, ucp_worker_h worker,
         return OPAL_ERROR;
     }
 
-    MCA_COMMON_UCX_WAIT_LOOP(request, type, worker, msg, NULL, ucp_request_free(request));
+    MCA_COMMON_UCX_WAIT_LOOP(request, type, worker, msg, info, ucp_request_free(request));
 }
 
 static inline int opal_common_ucx_ep_flush(ucp_ep_h ep, ucp_worker_h worker)
