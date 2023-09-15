@@ -122,6 +122,10 @@ static int mca_coll_ucx_module_enable(mca_coll_base_module_t *module,
     mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*) module;
     int rc;
 
+    COLL_UCX_ASSERT(sizeof(mca_coll_ucx_persistent_request_t) <=
+                    (sizeof(mca_common_ucx_persistent_request_t) +
+                     MCA_COMMON_UCX_PERSISTENT_REQUEST_SLACK));
+
     /* Initialize some structures, e.g. datatype context, if haven't already */
     mca_common_ucx_enable();
 
