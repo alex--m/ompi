@@ -345,6 +345,9 @@ struct ompi_communicator_t {
     /* instance that this comm belongs to */
     ompi_instance_t* instance;
 
+    /* latest measure of imbalance between ranks (in seconds) */
+    double c_imbalance;
+
 #if OPAL_ENABLE_FT_MPI
     /** agreement caching info for topology and previous returned decisions */
     opal_object_t           *agreement_specific;

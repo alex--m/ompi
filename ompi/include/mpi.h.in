@@ -2800,6 +2800,7 @@ OMPI_DECLSPEC  int PMPI_Comm_get_errhandler(MPI_Comm comm, MPI_Errhandler *erhan
 OMPI_DECLSPEC  int PMPI_Comm_get_info(MPI_Comm comm, MPI_Info *info_used);
 OMPI_DECLSPEC  int PMPI_Comm_get_name(MPI_Comm comm, char *comm_name, int *resultlen);
 OMPI_DECLSPEC  int PMPI_Comm_get_parent(MPI_Comm *parent);
+OMPI_DECLSPEC  double PMPI_Comm_get_last_imbalance(MPI_Comm comm);
 OMPI_DECLSPEC  int PMPI_Comm_group(MPI_Comm comm, MPI_Group *group);
 OMPI_DECLSPEC  int PMPI_Comm_join(int fd, MPI_Comm *intercomm);
 OMPI_DECLSPEC  int PMPI_Comm_rank(MPI_Comm comm, int *rank);
