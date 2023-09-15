@@ -260,6 +260,10 @@ int mca_pml_ucx_enable(bool enable)
                                                 UCP_OP_ATTR_FLAG_NO_IMM_CMPL;
     ucx_datatype->op_param.recv.cb.recv       = mca_pml_ucx_recv_nbx_completion;
 
+    PML_UCX_ASSERT(sizeof(mca_pml_ucx_persistent_request_t) <=
+                   (sizeof(mca_common_ucx_persistent_request_t) +
+                    MCA_COMMON_UCX_PERSISTENT_REQUEST_SLACK));
+
     mca_common_ucx_enable();
 
     return OMPI_SUCCESS;
