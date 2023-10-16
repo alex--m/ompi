@@ -41,6 +41,7 @@ typedef struct mca_coll_ucx_component {
     int                       priority;
     bool                      stable_reduce;
     bool                      get_imbalance;
+    bool                      flat_topology;
 } mca_coll_ucx_component_t;
 extern mca_coll_ucx_component_t mca_coll_ucx_component;
 
