@@ -50,7 +50,8 @@ mca_coll_ucx_component_t mca_coll_ucx_component = {
     },
     91,  /* priority */
     0,   /* stable_reduce */
-    0    /* get_imbalance*/
+    0,   /* get_imbalance */
+    0    /* flat_topology */
 };
 
 /*
@@ -118,6 +119,15 @@ static int mca_coll_ucx_component_register(void)
                                            OPAL_INFO_LVL_1,
                                            MCA_BASE_VAR_SCOPE_LOCAL,
                                            &mca_coll_ucx_component.get_imbalance);
+
+    mca_coll_ucx_component.flat_topology = false;
+    (void) mca_base_component_var_register(&mca_coll_ucx_component.super.collm_version,
+                                           "flat_topology",
+                                           "Whether to use a binary distance metric (host/net)",
+                                           MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                           OPAL_INFO_LVL_1,
+                                           MCA_BASE_VAR_SCOPE_LOCAL,
+                                           &mca_coll_ucx_component.flat_topology);
 
     opal_common_ucx_mca_var_register(&mca_coll_ucx_component.super.collm_version);
     return OMPI_SUCCESS;
