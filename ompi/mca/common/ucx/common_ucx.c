@@ -392,6 +392,8 @@ mca_common_ucx_async_complete(ompi_request_t *request, bool is_success,
 }
 
 jmp_buf mca_common_ucx_blocking_collective_call;
+volatile bool is_mca_common_ucx_blocking_collective_call_armed;
+
 static __opal_attribute_always_inline__ void
 mca_common_ucx_imm_complete(void *req, bool is_success, ucs_status_t status,
                             bool is_req_persistent)
@@ -399,14 +401,12 @@ mca_common_ucx_imm_complete(void *req, bool is_success, ucs_status_t status,
 #if OPAL_ENABLE_PROGRESS_THREADS == 0
     assert(is_req_persistent == false);
     assert(is_success == (status == UCS_OK));
-
-    longjmp(mca_common_ucx_blocking_collective_call,
-            (is_success ? OPAL_SUCCESS : OPAL_ERROR) - 1);
-
-    assert(0);
-#else
-    mca_common_ucx_async_complete(req, is_success, status, is_req_persistent);
+    if (ucs_likely(is_mca_common_ucx_blocking_collective_call_armed)) {
+        longjmp(mca_common_ucx_blocking_collective_call,
+                (is_success ? OPAL_SUCCESS : OPAL_ERROR) - 1);
+    }
 #endif
+    mca_common_ucx_async_complete(req, is_success, status, is_req_persistent);
 }
 
 static void mca_common_ucx_imm_success(void *req, ucs_status_t status)
