@@ -146,9 +146,9 @@ lib@OMPI_LIBMPI_NAME@_la_LIBADD = \
 lib@OMPI_LIBMPI_NAME@_la_LIBADD += \
         $(OMPI_TOP_BUILDDIR)/opal/lib@OPAL_LIB_NAME@.la
 lib@OMPI_LIBMPI_NAME@_la_DEPENDENCIES = $(lib@OMPI_LIBMPI_NAME@_la_LIBADD)
-lib@OMPI_LIBMPI_NAME@_la_LDFLAGS = \
+lib@OMPI_LIBMPI_NAME@_la_LDFLAGS = -lstdc++ \
        -version-info $(libmpi_so_version) \
-        $(OMPI_LIBMPI_EXTRA_LDFLAGS)
+        $(OMPI_LIBMPI_EXTRA_LDFLAGS) #-lc++abi
 
 # included subdirectory Makefile.am's and appended-to variables
 headers =
