@@ -84,6 +84,8 @@ int mca_coll_acoll_allreduce_intra(const void *sbuf, void *rbuf, size_t count,
 
 int mca_coll_acoll_barrier_intra(struct ompi_communicator_t *comm, mca_coll_base_module_t *module);
 
+int mca_coll_acoll_ft_event(int status);
+
 END_C_DECLS
 
 #define MCA_COLL_ACOLL_ROOT_CHANGE_THRESH 10
