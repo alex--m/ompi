@@ -160,8 +160,8 @@ mca_coll_ucx_persistent_start(mca_common_ucx_persistent_request_t *preq)
  * the persistent (external) request structure.
  */
 
-int mca_coll_ucx_allgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_allgather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(allgather, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -178,14 +178,14 @@ int mca_coll_ucx_allgatherv(const void *sbuf, int scount, struct ompi_datatype_t
                             0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_allreduce(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_allreduce(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(allreduce, module, sbuf, rbuf, count,
                             dtype, op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_allreduce_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_allreduce_stable(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(allreduce, module, sbuf, rbuf, count,
@@ -193,8 +193,8 @@ int mca_coll_ucx_allreduce_stable(const void *sbuf, void *rbuf, int count, struc
                             UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_alltoall(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(alltoall, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -241,21 +241,21 @@ int mca_coll_ucx_barrier(struct ompi_communicator_t *comm, mca_coll_base_module_
     COLL_UCX_START_BLOCKING(group_barrier, module, coll_ucx_module)
 }
 
-int mca_coll_ucx_bcast(void *buff, int count, struct ompi_datatype_t *datatype, int root,
+int mca_coll_ucx_bcast(void *buff, size_t count, struct ompi_datatype_t *datatype, int root,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(bcast, module, buff, buff, count, datatype,
                             0 /* op */, root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_exscan(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_exscan(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(exscan, module, sbuf, rbuf, count, dtype,
                             op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_exscan_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_exscan_stable(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(exscan, module, sbuf, rbuf, count, dtype,
@@ -263,8 +263,8 @@ int mca_coll_ucx_exscan_stable(const void *sbuf, void *rbuf, int count, struct o
                             UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_gather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_gather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(gather, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -279,14 +279,14 @@ int mca_coll_ucx_gatherv(const void *sbuf, int scount, struct ompi_datatype_t *s
                             disps, rdtype, 0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_reduce(const void *sbuf, void* rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(reduce, module, sbuf, rbuf, count,
                             dtype, op, root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_reduce_stable(const void *sbuf, void* rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_stable(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(reduce, module, sbuf, rbuf, count,
@@ -313,14 +313,14 @@ int mca_coll_ucx_reduce_scatter_stable(const void *sbuf, void *rbuf, const int *
                             UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_reduce_scatter_block(const void *sbuf, void *rbuf, int rcount, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_scatter_block(const void *sbuf, void *rbuf, size_t rcount, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(reduce_scatter_block, module, sbuf, rbuf, rcount,
                             dtype, op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_reduce_scatter_block_stable(const void *sbuf, void *rbuf, int rcount, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_scatter_block_stable(const void *sbuf, void *rbuf, size_t rcount, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(reduce_scatter_block, module, sbuf, rbuf, rcount,
@@ -328,14 +328,14 @@ int mca_coll_ucx_reduce_scatter_block_stable(const void *sbuf, void *rbuf, int r
                             UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_scan(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_scan(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(scan, module, sbuf, rbuf, count, dtype,
                             op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_scan_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_scan_stable(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(scan, module, sbuf, rbuf, count, dtype,
@@ -343,8 +343,8 @@ int mca_coll_ucx_scan_stable(const void *sbuf, void *rbuf, int count, struct omp
                             UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_scatter(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_scatter(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
       COLL_UCX_START_BLOCKING(scatter, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -359,8 +359,8 @@ int mca_coll_ucx_scatterv(const void *sbuf, const int *scounts, const int *disps
                               rbuf, rcount, rdtype, 0 /* op */, root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_iallgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_iallgather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(allgather, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -377,7 +377,7 @@ int mca_coll_ucx_iallgatherv(const void *sbuf, int scount, struct ompi_datatype_
                                0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_iallreduce(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_iallreduce(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm,
    ompi_request_t ** request, mca_coll_base_module_t *module)
 {
@@ -385,7 +385,7 @@ int mca_coll_ucx_iallreduce(const void *sbuf, void *rbuf, int count, struct ompi
                                dtype, op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_iallreduce_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_iallreduce_stable(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm,
    ompi_request_t ** request, mca_coll_base_module_t *module)
 {
@@ -394,8 +394,8 @@ int mca_coll_ucx_iallreduce_stable(const void *sbuf, void *rbuf, int count, stru
                                UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_ialltoall(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_ialltoall(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(alltoall, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -442,7 +442,7 @@ int mca_coll_ucx_ibarrier(struct ompi_communicator_t *comm, ompi_request_t ** re
     COLL_UCX_START_NONBLOCKING(group_ibarrier, module, coll_ucx_module)
 }
 
-int mca_coll_ucx_ibcast(void *buff, int count, struct ompi_datatype_t *datatype, int root,
+int mca_coll_ucx_ibcast(void *buff, size_t count, struct ompi_datatype_t *datatype, int root,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(bcast, module, buff, buff, count, datatype,
@@ -450,22 +450,22 @@ int mca_coll_ucx_ibcast(void *buff, int count, struct ompi_datatype_t *datatype,
 
 }
 
-int mca_coll_ucx_iexscan(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_iexscan(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(exscan, module, sbuf, rbuf, count, dtype,
                                op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_iexscan_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_iexscan_stable(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(exscan, module, sbuf, rbuf, count, dtype, op, 0 /* root */,
                                UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_igather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_igather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(gather, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -480,14 +480,14 @@ int mca_coll_ucx_igatherv(const void *sbuf, int scount, struct ompi_datatype_t *
                                disps, rdtype, 0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_ireduce(const void *sbuf, void* rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_ireduce(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, int root, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(reduce, module, sbuf, rbuf, count,
                                dtype, op, root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_ireduce_stable(const void *sbuf, void* rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_ireduce_stable(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, int root, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(reduce, module, sbuf, rbuf, count,
@@ -513,14 +513,14 @@ int mca_coll_ucx_ireduce_scatter_stable(const void *sbuf, void *rbuf, const int 
                                UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_ireduce_scatter_block(const void *sbuf, void *rbuf, int rcount, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_ireduce_scatter_block(const void *sbuf, void *rbuf, size_t rcount, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(reduce_scatter_block, module, sbuf, rbuf, rcount,
                             dtype, op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_ireduce_scatter_block_stable(const void *sbuf, void *rbuf, int rcount, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_ireduce_scatter_block_stable(const void *sbuf, void *rbuf, size_t rcount, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(reduce_scatter_block, module, sbuf, rbuf, rcount,
@@ -528,14 +528,14 @@ int mca_coll_ucx_ireduce_scatter_block_stable(const void *sbuf, void *rbuf, int 
                             UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_iscan(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_iscan(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(scan, module, sbuf, rbuf, count, dtype,
                                op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_iscan_stable(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_iscan_stable(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(scan, module, sbuf, rbuf, count, dtype,
@@ -543,8 +543,8 @@ int mca_coll_ucx_iscan_stable(const void *sbuf, void *rbuf, int count, struct om
                                UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_iscatter(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_iscatter(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
       COLL_UCX_START_NONBLOCKING(scatter, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -559,8 +559,8 @@ int mca_coll_ucx_iscatterv(const void *sbuf, const int *scounts, const int *disp
                                  rbuf, rcount, rdtype, 0 /* op */, root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_allgather_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_allgather_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(allgather, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -577,7 +577,7 @@ int mca_coll_ucx_allgatherv_init(const void *sbuf, int scount, struct ompi_datat
                               0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_allreduce_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_allreduce_init(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info,
    ompi_request_t ** request, mca_coll_base_module_t *module)
 {
@@ -585,7 +585,7 @@ int mca_coll_ucx_allreduce_init(const void *sbuf, void *rbuf, int count, struct 
                               dtype, op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_allreduce_stable_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_allreduce_stable_init(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info,
    ompi_request_t ** request, mca_coll_base_module_t *module)
 {
@@ -594,8 +594,8 @@ int mca_coll_ucx_allreduce_stable_init(const void *sbuf, void *rbuf, int count, 
                               UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_alltoall_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_alltoall_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(alltoall, module, sbuf, scount, sdtype, rbuf, rcount,
@@ -627,7 +627,7 @@ int mca_coll_ucx_barrier_init(struct ompi_communicator_t *comm, struct ompi_info
     COLL_UCX_START_PERSISTENT(barrier, module, 0 /* ign */)
 }
 
-int mca_coll_ucx_bcast_init(void *buff, int count, struct ompi_datatype_t *datatype, int root,
+int mca_coll_ucx_bcast_init(void *buff, size_t count, struct ompi_datatype_t *datatype, int root,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(bcast, module, buff, buff, count, datatype,
@@ -635,22 +635,22 @@ int mca_coll_ucx_bcast_init(void *buff, int count, struct ompi_datatype_t *datat
 
 }
 
-int mca_coll_ucx_exscan_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_exscan_init(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(exscan, module, sbuf, rbuf, count, dtype, op,
                               0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_exscan_stable_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_exscan_stable_init(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(exscan, module, sbuf, rbuf, count, dtype, op, 0 /* root */,
                               UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_gather_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_gather_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(gather, module,
@@ -669,7 +669,7 @@ int mca_coll_ucx_gatherv_init(const void *sbuf, int scount, struct ompi_datatype
                               0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_reduce_init(const void *sbuf, void* rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_init(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, int root, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(reduce, module, sbuf, rbuf, count, dtype, op,
@@ -677,7 +677,7 @@ int mca_coll_ucx_reduce_init(const void *sbuf, void* rbuf, int count, struct omp
 
 }
 
-int mca_coll_ucx_reduce_stable_init(const void *sbuf, void* rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_stable_init(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, int root, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(reduce, module, sbuf, rbuf, count, dtype, op, root,
@@ -703,14 +703,14 @@ int mca_coll_ucx_reduce_scatter_stable_init(const void *sbuf, void *rbuf, const 
                               UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_reduce_scatter_block_init(const void *sbuf, void *rbuf, int rcount, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_scatter_block_init(const void *sbuf, void *rbuf, size_t rcount, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(reduce_scatter_block, module, sbuf, rbuf, rcount,
                               dtype, op, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_reduce_scatter_block_stable_init(const void *sbuf, void *rbuf, int rcount, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_scatter_block_stable_init(const void *sbuf, void *rbuf, size_t rcount, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(reduce_scatter_block, module, sbuf, rbuf, rcount,
@@ -718,22 +718,22 @@ int mca_coll_ucx_reduce_scatter_block_stable_init(const void *sbuf, void *rbuf, 
                               UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_scan_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_scan_init(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(scan, module, sbuf, rbuf, count, dtype, op,
                               0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_scan_stable_init(const void *sbuf, void *rbuf, int count, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_scan_stable_init(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(scan, module, sbuf, rbuf, count, dtype, op, 0 /* root */,
                               UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_scatter_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_scatter_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(scatter, module,
@@ -752,8 +752,8 @@ int mca_coll_ucx_scatterv_init(const void *sbuf, const int *scounts, const int *
                               0 /* op */, root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_neighbor_allgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_neighbor_allgather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(neighbor_allgather, module,
@@ -772,8 +772,8 @@ int mca_coll_ucx_neighbor_allgatherv(const void *sbuf, int scount, struct ompi_d
                             0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_neighbor_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_neighbor_alltoall(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(neighbor_alltoall, module,
@@ -802,8 +802,8 @@ int mca_coll_ucx_neighbor_alltoallw(const void *sbuf, const int *scounts, const 
                             0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_ineighbor_allgather(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_ineighbor_allgather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(neighbor_allgather, module,
@@ -822,8 +822,8 @@ int mca_coll_ucx_ineighbor_allgatherv(const void *sbuf, int scount, struct ompi_
                                0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_ineighbor_alltoall(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_ineighbor_alltoall(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_NONBLOCKING(neighbor_alltoall, module,
@@ -852,8 +852,8 @@ int mca_coll_ucx_ineighbor_alltoallw(const void *sbuf, const int *scounts, const
                                0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_neighbor_allgather_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_neighbor_allgather_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(neighbor_allgather, module,
@@ -872,8 +872,8 @@ int mca_coll_ucx_neighbor_allgatherv_init(const void *sbuf, int scount, struct o
                               0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_neighbor_alltoall_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_neighbor_alltoall_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
     COLL_UCX_START_PERSISTENT(neighbor_alltoall, module,
