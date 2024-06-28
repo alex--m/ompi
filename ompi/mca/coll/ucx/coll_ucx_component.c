@@ -87,7 +87,10 @@ mca_coll_ucx_comm_query(struct ompi_communicator_t *comm, int *priority)
         return NULL;
     }
 
-    *priority = mca_coll_ucx_component.priority;
+    ucx_module->comm                      = comm;
+    ucx_module->super.coll_module_enable  = mca_coll_ucx_module_enable;
+    ucx_module->super.coll_module_disable = mca_coll_ucx_module_disable;
+    *priority                             = mca_coll_ucx_component.priority;
     return &(ucx_module->super);
 }
 

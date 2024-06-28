@@ -815,13 +815,6 @@ static int opal_common_ucx_init_worker(ucs_thread_mode_t thread_mode)
     params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
     params.thread_mode = thread_mode;
 
-    status = ucp_worker_create(opal_common_ucx.ucp_context, &params,
-                               &opal_common_ucx.ucp_worker);
-    if (UCS_OK != status) {
-        MCA_COMMON_UCX_ERROR("Failed to create UCP worker");
-        return OPAL_ERROR;
-    }
-
 #if HAVE_DECL_UCP_WORKER_FLAG_IGNORE_REQUEST_LEAK
     if (!opal_common_ucx.request_leak_check) {
         params.field_mask |= UCP_WORKER_PARAM_FIELD_FLAGS;
@@ -833,6 +826,18 @@ static int opal_common_ucx_init_worker(ucs_thread_mode_t thread_mode)
     params.field_mask |= UCP_WORKER_PARAM_FIELD_UUID;
     params.uuid       |= opal_process_info.myprocid.rank;
 #endif
+
+#if HAVE_DECL_UCP_WORKER_PARAM_FIELD_AM_ALIGNMENT
+    params.field_mask  |= UCP_WORKER_PARAM_FIELD_AM_ALIGNMENT;
+    params.am_alignment = 64; /* Typical cache-line size */
+#endif
+
+    status = ucp_worker_create(opal_common_ucx.ucp_context, &params,
+                               &opal_common_ucx.ucp_worker);
+    if (UCS_OK != status) {
+        MCA_COMMON_UCX_ERROR("Failed to create UCP worker");
+        return OPAL_ERROR;
+    }
 
     attr.field_mask = UCP_WORKER_ATTR_FIELD_THREAD_MODE;
     status = ucp_worker_query(opal_common_ucx.ucp_worker, &attr);

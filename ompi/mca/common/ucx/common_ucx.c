@@ -406,7 +406,6 @@ mca_common_ucx_imm_complete(void *req, bool is_success, ucs_status_t status,
                 (is_success ? OPAL_SUCCESS : OPAL_ERROR) - 1);
     }
 #endif
-    mca_common_ucx_async_complete(req, is_success, status, is_req_persistent);
 }
 
 static void mca_common_ucx_imm_success(void *req, ucs_status_t status)

@@ -119,14 +119,63 @@ static int mca_coll_ucg_create(mca_coll_ucx_module_t *module,
     return OMPI_SUCCESS;
 }
 
+
+#define MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module_ptr, _upper_name, \
+                                                     _lower_name, _params, \
+                                                     _comm, _want_stable_reduce, \
+                                                     _stable_suffix, _prefix, \
+                                                     _suffix) \
+    (_params).type.modifiers = UCG_PRIMITIVE_ ## _upper_name; \
+    if (strcmp(#_lower_name, "alltoallv") && \
+        strcmp(#_lower_name, "alltoallw") && \
+        strcmp(#_lower_name, "neighbor_alltoallv") && \
+        strcmp(#_lower_name, "neighbor_alltoallw")) { \
+        (_params).type.modifiers |= UCG_GROUP_COLLECTIVE_MODIFIER_TYPE_VALID; \
+    } \
+    \
+    if (ucg_collective_is_supported(&(_params)) == UCS_OK) { \
+        MCA_COLL_INSTALL_API(_comm, _prefix ## _lower_name ## _suffix, \
+                             (_want_stable_reduce) ? \
+                             mca_coll_ucx_ ## _prefix ## _lower_name ## _stable_suffix ## _suffix : \
+                             mca_coll_ucx_ ## _prefix ## _lower_name ## _suffix, \
+                             _module_ptr, "ucx"); \
+    }
+
+#define MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
+                                              _params, _comm, _want_stable_reduce, \
+                                              _stable_suffix) \
+MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
+                                             _params, _comm, _want_stable_reduce, \
+                                             _stable_suffix, , ) \
+MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
+                                             _params, _comm, _want_stable_reduce, \
+                                             _stable_suffix, i, ) \
+MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
+                                             _params, _comm, _want_stable_reduce, \
+                                             _stable_suffix, , _init)
+
+#define MCA_COLL_UCX_MODULE_SET_COLL(_module, _upper_name, _lower_name, _params, \
+                                     _comm) \
+    MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
+                                          _params, _comm, 0, )
+
+#define MCA_COLL_UCX_MODULE_SET_COLL_STABLE(_module, _upper_name, _lower_name, \
+                                            _params, _comm, _want_stable_reduce) \
+    MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
+                                          _params, _comm, _want_stable_reduce, \
+                                          _stable)
+
 /*
  * Initialize module on the communicator
  */
-static int mca_coll_ucx_module_enable(mca_coll_base_module_t *module,
-                                      struct ompi_communicator_t *comm)
+int mca_coll_ucx_module_enable(mca_coll_base_module_t *module,
+                               struct ompi_communicator_t *comm)
 {
-    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*) module;
     int rc;
+    mca_coll_ucx_module_t *ucx_module = (mca_coll_ucx_module_t*) module;
+    ucg_collective_support_params_t params = {
+        .query = UCG_COLLECTIVE_SUPPORT_QUERY_BY_TYPE
+    };
 
     COLL_UCX_ASSERT(sizeof(mca_coll_ucx_persistent_request_t) <=
                     (sizeof(mca_common_ucx_persistent_request_t) +
@@ -145,92 +194,36 @@ static int mca_coll_ucx_module_enable(mca_coll_base_module_t *module,
     if (rc != OMPI_SUCCESS)
         return rc;
 
-    COLL_UCX_VERBOSE(1, "UCX Collectives Module initialized");
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLGATHER,           allgather,           params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLGATHERV,          allgatherv,          params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALL,            alltoall,            params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALLV,           alltoallv,           params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALLW,           alltoallw,           params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, BARRIER,             barrier,             params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, BCAST,               bcast,               params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, GATHER,              gather,              params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, GATHERV,             gatherv,             params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, SCATTER,             scatter,             params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, SCATTERV,            scatterv,            params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLGATHER,  neighbor_allgather,  params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLGATHERV, neighbor_allgatherv, params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALL,   neighbor_alltoall,   params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALLV,  neighbor_alltoallv,  params, comm);
+    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALLW,  neighbor_alltoallw,  params, comm);
 
-    return OMPI_SUCCESS;
-}
-
-#define MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, \
-                                                     _lower_name, _params, \
-                                                     _want_stable_reduce, \
-                                                     _stable_suffix, \
-                                                     _prefix, _suffix) \
-    (_params).type.modifiers = UCG_PRIMITIVE_ ## _upper_name; \
-    if (strcmp(#_lower_name, "alltoallv") && \
-        strcmp(#_lower_name, "alltoallw") && \
-        strcmp(#_lower_name, "neighbor_alltoallv") && \
-        strcmp(#_lower_name, "neighbor_alltoallw")) { \
-        (_params).type.modifiers |= UCG_GROUP_COLLECTIVE_MODIFIER_TYPE_VALID; \
-    } \
-    \
-    if (ucg_collective_is_supported(&(_params)) == UCS_OK) { \
-        module->super.coll_ ## _prefix ## _lower_name ## _suffix = \
-            (_want_stable_reduce) ? \
-            mca_coll_ucx_ ## _prefix ## _lower_name ## _stable_suffix ## _suffix : \
-            mca_coll_ucx_ ## _prefix ## _lower_name ## _suffix; \
-    }
-
-#define MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
-                                              _params, _want_stable_reduce, \
-                                              _stable_suffix) \
-MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
-                                             _params, _want_stable_reduce, \
-                                             _stable_suffix, , ) \
-MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
-                                             _params, _want_stable_reduce, \
-                                             _stable_suffix, i, ) \
-MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL_SINGLE(_module, _upper_name, _lower_name, \
-                                             _params, _want_stable_reduce, \
-                                             _stable_suffix, , _init)
-
-#define MCA_COLL_UCX_MODULE_SET_COLL(_module, _upper_name, _lower_name, _params) \
-    MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
-                                          _params, 0, )
-
-#define MCA_COLL_UCX_MODULE_SET_COLL_STABLE(_module, _upper_name, _lower_name, \
-                                            _params, _want_stable_reduce) \
-    MCA_COLL_UCX_MODULE_SET_COLL_INTERNAL(_module, _upper_name, _lower_name, \
-                                          _params, _want_stable_reduce, _stable)
-
-static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
-{
-    ucg_collective_support_params_t params = {
-        .query = UCG_COLLECTIVE_SUPPORT_QUERY_BY_TYPE
-    };
-
-    memset(&module->super.super + 1, 0,
-           sizeof(*module) - sizeof(module->super.super));
-
-    module->super.coll_module_enable = mca_coll_ucx_module_enable;
-
-    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLGATHER,           allgather,           params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLGATHERV,          allgatherv,          params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALL,            alltoall,            params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALLV,           alltoallv,           params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, ALLTOALLW,           alltoallw,           params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, BARRIER,             barrier,             params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, BCAST,               bcast,               params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, GATHER,              gather,              params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, GATHERV,             gatherv,             params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, SCATTER,             scatter,             params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, SCATTERV,            scatterv,            params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLGATHER,  neighbor_allgather,  params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLGATHERV, neighbor_allgatherv, params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALL,   neighbor_alltoall,   params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALLV,  neighbor_alltoallv,  params);
-    MCA_COLL_UCX_MODULE_SET_COLL(module, NEIGHBOR_ALLTOALLW,  neighbor_alltoallw,  params);
-
-    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, ALLREDUCE, allreduce, params,
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, ALLREDUCE, allreduce, params, comm,
                                         mca_coll_ucx_component.stable_reduce);
-    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, EXSCAN, exscan, params,
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, EXSCAN, exscan, params, comm,
                                         mca_coll_ucx_component.stable_reduce);
-    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE, reduce, params,
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE, reduce, params, comm,
                                         mca_coll_ucx_component.stable_reduce);
-    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE_SCATTER, reduce_scatter, params,
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE_SCATTER, reduce_scatter,
+                                        params, comm,
                                         mca_coll_ucx_component.stable_reduce);
-    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE_SCATTER_BLOCK, reduce_scatter_block, params,
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, REDUCE_SCATTER_BLOCK,
+                                        reduce_scatter_block, params, comm,
                                         mca_coll_ucx_component.stable_reduce);
-    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, SCAN, scan, params,
+    MCA_COLL_UCX_MODULE_SET_COLL_STABLE(module, SCAN, scan, params, comm,
                                         mca_coll_ucx_component.stable_reduce);
 
     /*
@@ -243,7 +236,22 @@ static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
         mca_coll_base_module_iagree_fn_t coll_iagree;
         mca_coll_base_module_2_4_0_t *coll_iagree_module;
     */
+
+    COLL_UCX_VERBOSE(1, "UCX Collectives Module initialized");
+
+    return OMPI_SUCCESS;
 }
+
+int mca_coll_ucx_module_disable(mca_coll_base_module_t *module,
+                                struct ompi_communicator_t *comm)
+{
+    return OMPI_SUCCESS;
+}
+
+static void mca_coll_ucx_module_construct(mca_coll_ucx_module_t *module)
+{
+    memset(&module->super.super + 1, 0,
+           sizeof(*module) - sizeof(module->super.super));}
 
 static void mca_coll_ucx_module_destruct(mca_coll_ucx_module_t *module)
 {
