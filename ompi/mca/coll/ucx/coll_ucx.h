@@ -49,9 +49,10 @@ typedef struct mca_coll_ucx_module {
     mca_coll_base_module_t super;
 
     /* UCX per-communicator context */
-    ucg_group_h            ucg_group;
-    ucg_coll_h             barrier_init;
-    ucg_coll_h             ibarrier_init;
+    struct ompi_communicator_t *comm;
+    ucg_group_h                 ucg_group;
+    ucg_coll_h                  barrier_init;
+    ucg_coll_h                  ibarrier_init;
 } mca_coll_ucx_module_t;
 OBJ_CLASS_DECLARATION(mca_coll_ucx_module_t);
 
@@ -98,6 +99,11 @@ int mca_coll_ucx_neighbors_count(ompi_communicator_t *comm,
 int mca_coll_ucx_neighbors_query(ompi_communicator_t *comm,
                                  int *sources, int *destinations);
 
+int mca_coll_ucx_module_enable(mca_coll_base_module_t *module,
+                               struct ompi_communicator_t *comm);
+
+int mca_coll_ucx_module_disable(mca_coll_base_module_t *module,
+                                struct ompi_communicator_t *comm);
 
 /*
  * The collective operations themselves.
