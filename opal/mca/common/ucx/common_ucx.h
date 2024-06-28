@@ -97,10 +97,12 @@ static inline void opal_progress_by_req(enum opal_common_ucx_req_type req_type,
 
 #define MCA_COMMON_UCX_PROGRESS_LOOP_BY_REQ(_worker, _type, _req, _info) \
     void *orig_info = _info; \
+    unsigned iter_mask = opal_common_ucx.progress_iters_mask; \
     if (_type == OPAL_COMMON_UCX_REQUEST_TYPE_UCG) { \
         _info = (typeof(_info))ucg_collective_get_status_ptr(_req); \
+        iter_mask = (iter_mask << 3) | ((1 << 3) - 1) ; \
     } \
-    for (unsigned iter = 0;; (++iter & opal_common_ucx.progress_iters_mask) \
+    for (unsigned iter = 0;; (++iter & iter_mask) \
                                  ? opal_progress_by_req(_type, _worker,     \
                                                         _req, orig_info)    \
                                  : (void) opal_progress())
