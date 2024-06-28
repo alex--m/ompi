@@ -146,6 +146,19 @@ mca_coll_ucx_persistent_start(mca_common_ucx_persistent_request_t *preq)
     return &preq->ompi;
 }
 
+static inline uint16_t mca_coll_ucx_op_array_is_32b(intptr_t array)
+{
+   /* See ompi_count_array_is_64bit() */
+   _Static_assert(sizeof(size_t) == 8);
+   _Static_assert(UCG_GROUP_COLLECTIVE_MODIFIER_32_BIT_INTEGERS == 0x1L);
+   return (array & UCG_GROUP_COLLECTIVE_MODIFIER_32_BIT_INTEGERS);
+}
+
+static inline void* mca_coll_ucx_op_get_array(intptr_t array)
+{
+   return (void*)(array & ~0x1L);
+}
+
 /*
  * For each type of collectives there are 3 varieties of function calls:
  * blocking, non-blocking and persistent initialization. For example, for
@@ -167,22 +180,28 @@ mca_coll_ucx_persistent_start(mca_common_ucx_persistent_request_t *preq)
  * the persistent (external) request structure.
  */
 
-int mca_coll_ucx_allgather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
-   struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
+int mca_coll_ucx_allgather(const void *sbuf, size_t scount, struct
+   ompi_datatype_t *sdtype, void *rbuf, size_t rcount,
+   struct ompi_datatype_t *rdtype, struct ompi_communicator_t *comm,
+   mca_coll_base_module_t *module)
 {
     COLL_UCX_START_BLOCKING(allgather, module, 0, sbuf, scount, sdtype, rbuf, rcount,
                             rdtype, 0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_allgatherv(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void * rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_allgatherv(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void * rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_BLOCKING(allgatherv, module, 0,
                             sbuf, scount, sdtype,
-                            rbuf, rcounts, disps, rdtype,
-                            0 /* op */, 0 /* root */, 0 /* modifiers */)
+                            rbuf, mca_coll_ucx_op_get_array(rcounts),
+                            mca_coll_ucx_op_get_array(disps), rdtype,
+                            0 /* op */, 0 /* root */,
+                            mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_allreduce(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
@@ -208,24 +227,45 @@ int mca_coll_ucx_alltoall(const void *sbuf, size_t scount, struct ompi_datatype_
                             rdtype, 0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_alltoallv(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_alltoallv(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_BLOCKING(alltoallv, module, 0,
-                            sbuf, scounts, sdisps, sdtype,
-                            rbuf, rcounts, rdisps, rdtype,
-                            0 /* op */, 0 /* root */, 0 /* modifiers */)
+                            sbuf, mca_coll_ucx_op_get_array(scounts),
+mca_coll_ucx_op_get_array(sdisps), sdtype,
+                            rbuf, mca_coll_ucx_op_get_array(rcounts),
+                            mca_coll_ucx_op_get_array(rdisps), rdtype,
+                            0 /* op */, 0 /* root */,
+                            mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_alltoallw(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t * const *sdtypes,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t * const *rdtypes,
+int mca_coll_ucx_alltoallw(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t * const *sdtypes,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t * const *rdtypes,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_BLOCKING(alltoallw, module, 0,
-                            sbuf, scounts, sdisps, (void * const *) sdtypes,
-                            rbuf, rcounts, rdisps, (void * const *) rdtypes,
-                            0 /* op */, 0 /* root */, 0 /* modifiers */)
+                            sbuf, mca_coll_ucx_op_get_array(scounts), mca_coll_ucx_op_get_array(sdisps),
+                            (void * const *) sdtypes,
+                            rbuf, mca_coll_ucx_op_get_array(rcounts),
+                            mca_coll_ucx_op_get_array(rdisps),
+                            (void * const *) rdtypes,
+                            0 /* op */, 0 /* root */,
+                            mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 static inline int
@@ -279,13 +319,17 @@ int mca_coll_ucx_gather(const void *sbuf, size_t scount, struct ompi_datatype_t 
                             0 /* modifiers */)
 }
 
-int mca_coll_ucx_gatherv(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_gatherv(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_BLOCKING(gatherv, module, root != comm->c_my_rank, sbuf, scount,
-                            sdtype, rbuf, rcounts, disps, rdtype, 0 /* op */,
-                            0 /* root */, 0 /* modifiers */)
+                            sdtype, rbuf, mca_coll_ucx_op_get_array(rcounts),
+                            mca_coll_ucx_op_get_array(disps), rdtype, 0 /* op */,
+                            0 /* root */, mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_reduce(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
@@ -303,22 +347,20 @@ int mca_coll_ucx_reduce_stable(const void *sbuf, void* rbuf, size_t count, struc
                             UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_reduce_scatter(const void *sbuf, void *rbuf, const int *rcounts, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_scatter(const void *sbuf, void *rbuf, ompi_count_array_t rcounts, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
-    COLL_UCX_START_BLOCKING(reduce_scatter, module, 0,
-                            sbuf, ompi_comm_rank(comm),
-                            rbuf, rcounts, dtype,
-                            op, 0 /* root */, 0 /* modifiers */)
+    COLL_UCX_START_BLOCKING(reduce_scatter, module, 0, sbuf,
+                            rbuf, mca_coll_ucx_op_get_array(rcounts), dtype,
+                            op, 0 /* root */, mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_reduce_scatter_stable(const void *sbuf, void *rbuf, const int *rcounts, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_scatter_stable(const void *sbuf, void *rbuf, ompi_count_array_t rcounts, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
-    COLL_UCX_START_BLOCKING(reduce_scatter, module, 0,
-                            sbuf, ompi_comm_rank(comm),
-                            rbuf, rcounts, dtype,
-                            op, 0 /* root */,
+    COLL_UCX_START_BLOCKING(reduce_scatter, module, 0, sbuf,
+                            rbuf, mca_coll_ucx_op_get_array(rcounts), dtype,
+                            op, 0 /* root */, mca_coll_ucx_op_array_is_32b(rcounts) |
                             UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
@@ -356,18 +398,23 @@ int mca_coll_ucx_scatter(const void *sbuf, size_t scount, struct ompi_datatype_t
    void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
-      COLL_UCX_START_BLOCKING(scatter, module, root == comm->c_my_rank, sbuf,
-                              scount, sdtype, rbuf, rcount, rdtype, 0 /* op */,
-                              root, 0 /* modifiers */)
+    COLL_UCX_START_BLOCKING(scatter, module, root == comm->c_my_rank, sbuf,
+                            scount, sdtype, rbuf, rcount, rdtype, 0 /* op */,
+                            root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_scatterv(const void *sbuf, const int *scounts, const int *disps, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_scatterv(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t disps, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
-      COLL_UCX_START_BLOCKING(scatterv, module, root == comm->c_my_rank, sbuf,
-                              scounts, disps, sdtype, rbuf, rcount, rdtype,
-                              0 /* op */, root, 0 /* modifiers */)
+    assert(mca_coll_ucx_op_array_is_32b(scounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
+    COLL_UCX_START_BLOCKING(scatterv, module, root == comm->c_my_rank, sbuf,
+                            mca_coll_ucx_op_get_array(scounts),
+                            mca_coll_ucx_op_get_array(disps), sdtype,
+                            rbuf, rcount, rdtype, 0 /* op */, root,
+                            mca_coll_ucx_op_array_is_32b(disps))
 }
 
 int mca_coll_ucx_iallgather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
@@ -379,14 +426,19 @@ int mca_coll_ucx_iallgather(const void *sbuf, size_t scount, struct ompi_datatyp
                                0 /* modifiers */)
 }
 
-int mca_coll_ucx_iallgatherv(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void * rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_iallgatherv(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void * rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_NONBLOCKING(allgatherv, module, 0,
                                sbuf, scount, sdtype,
-                               rbuf, rcounts, disps, rdtype,
-                               0 /* op */, 0 /* root */, 0 /* modifiers */)
+                               rbuf, mca_coll_ucx_op_get_array(rcounts),
+                               mca_coll_ucx_op_get_array(disps), rdtype,
+                               0 /* op */, 0 /* root */,
+                               mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_iallreduce(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
@@ -415,24 +467,46 @@ int mca_coll_ucx_ialltoall(const void *sbuf, size_t scount, struct ompi_datatype
                                0 /* modifiers */)
 }
 
-int mca_coll_ucx_ialltoallv(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_ialltoallv(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_NONBLOCKING(alltoallv, module, 0,
-                               sbuf, scounts, sdisps, sdtype,
-                               rbuf, rcounts, rdisps, rdtype,
-                               0 /* op */, 0 /* root */, 0 /* modifiers */)
+                               sbuf, mca_coll_ucx_op_get_array(scounts),
+                               mca_coll_ucx_op_get_array(sdisps), sdtype,
+                               rbuf, mca_coll_ucx_op_get_array(rcounts),
+                               mca_coll_ucx_op_get_array(rdisps), rdtype,
+                               0 /* op */, 0 /* root */,
+                               mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_ialltoallw(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t * const *sdtypes,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t * const *rdtypes,
+int mca_coll_ucx_ialltoallw(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t * const *sdtypes,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t * const *rdtypes,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_NONBLOCKING(alltoallw, module, 0,
-                               sbuf, scounts, sdisps, (void * const *) sdtypes,
-                               rbuf, rcounts, rdisps, (void * const *) rdtypes,
-                               0 /* op */, 0 /* root */, 0 /* modifiers */)
+                               sbuf, mca_coll_ucx_op_get_array(scounts),
+                               mca_coll_ucx_op_get_array(sdisps),
+                               (void * const *) sdtypes,
+                               rbuf, mca_coll_ucx_op_get_array(rcounts),
+                               mca_coll_ucx_op_get_array(rdisps),
+                               (void * const *) rdtypes,
+                               0 /* op */, 0 /* root */,
+                               mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 static inline int
@@ -487,13 +561,19 @@ int mca_coll_ucx_igather(const void *sbuf, size_t scount, struct ompi_datatype_t
                                0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_igatherv(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_igatherv(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_NONBLOCKING(gatherv, module, root != comm->c_my_rank, sbuf,
-                               scount, sdtype, rbuf, rcounts, disps, rdtype,
-                               0 /* op */, 0 /* root */, 0 /* modifiers */)
+                               scount, sdtype, rbuf,
+                               mca_coll_ucx_op_get_array(rcounts),
+                               mca_coll_ucx_op_get_array(disps), rdtype,
+                               0 /* op */, 0 /* root */,
+                               mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_ireduce(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
@@ -510,22 +590,20 @@ int mca_coll_ucx_ireduce_stable(const void *sbuf, void* rbuf, size_t count, stru
                                rbuf, count, dtype, op, root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_ireduce_scatter(const void *sbuf, void *rbuf, const int *rcounts, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_ireduce_scatter(const void *sbuf, void *rbuf, ompi_count_array_t rcounts, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
-    COLL_UCX_START_NONBLOCKING(reduce_scatter, module, 0,
-                               sbuf, ompi_comm_rank(comm),
-                               rbuf, rcounts, dtype,
-                               op, 0 /* root */, 0 /* modifiers */)
+    COLL_UCX_START_NONBLOCKING(reduce_scatter, module, 0, sbuf,
+                               rbuf, mca_coll_ucx_op_get_array(rcounts), dtype,
+                               op, 0 /* root */, mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_ireduce_scatter_stable(const void *sbuf, void *rbuf, const int *rcounts, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_ireduce_scatter_stable(const void *sbuf, void *rbuf, ompi_count_array_t rcounts, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
-    COLL_UCX_START_NONBLOCKING(reduce_scatter, module, 0,
-                               sbuf, ompi_comm_rank(comm),
-                               rbuf, rcounts, dtype,
-                               op, 0 /* root */,
+    COLL_UCX_START_NONBLOCKING(reduce_scatter, module, 0, sbuf,
+                               rbuf, mca_coll_ucx_op_get_array(rcounts), dtype,
+                               op, 0 /* root */, mca_coll_ucx_op_array_is_32b(rcounts) |
                                UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
@@ -563,18 +641,23 @@ int mca_coll_ucx_iscatter(const void *sbuf, size_t scount, struct ompi_datatype_
    void *rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
-      COLL_UCX_START_NONBLOCKING(scatter, module, root == comm->c_my_rank, sbuf,
-                                 scount, sdtype, rbuf, rcount, rdtype, 0 /* op */,
-                                 root, 0 /* modifiers */)
+    COLL_UCX_START_NONBLOCKING(scatter, module, root == comm->c_my_rank, sbuf,
+                               scount, sdtype, rbuf, rcount, rdtype, 0 /* op */,
+                               root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_iscatterv(const void *sbuf, const int *scounts, const int *disps, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_iscatterv(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t disps, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
-      COLL_UCX_START_NONBLOCKING(scatterv, module, root == comm->c_my_rank, sbuf,
-                                 scounts, disps, sdtype, rbuf, rcount, rdtype,
-                                 0 /* op */, root, 0 /* modifiers */)
+    assert(mca_coll_ucx_op_array_is_32b(scounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
+    COLL_UCX_START_NONBLOCKING(scatterv, module, root == comm->c_my_rank, sbuf,
+                               mca_coll_ucx_op_get_array(scounts),
+                               mca_coll_ucx_op_get_array(disps),
+                               sdtype, rbuf, rcount, rdtype, 0 /* op */, root,
+                               mca_coll_ucx_op_array_is_32b(disps))
 }
 
 int mca_coll_ucx_allgather_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
@@ -585,14 +668,19 @@ int mca_coll_ucx_allgather_init(const void *sbuf, size_t scount, struct ompi_dat
                               rdtype, 0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_allgatherv_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void * rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_allgatherv_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void * rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_PERSISTENT(allgatherv, module,
                               sbuf, scount, sdtype,
-                              rbuf, rcounts, disps, rdtype,
-                              0 /* op */, 0 /* root */, 0 /* modifiers */)
+                              rbuf, mca_coll_ucx_op_get_array(rcounts),
+                              mca_coll_ucx_op_get_array(disps), rdtype,
+                              0 /* op */, 0 /* root */,
+                              mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_allreduce_init(const void *sbuf, void *rbuf, size_t count, struct ompi_datatype_t *dtype,
@@ -620,24 +708,46 @@ int mca_coll_ucx_alltoall_init(const void *sbuf, size_t scount, struct ompi_data
                               rdtype, 0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_alltoallv_init(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_alltoallv_init(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_PERSISTENT(alltoallv, module,
-                              sbuf, scounts, sdisps, sdtype,
-                              rbuf, rcounts, rdisps, rdtype,
-                              0 /* op */, 0 /* root */, 0 /* modifiers */)
+                              sbuf, mca_coll_ucx_op_get_array(scounts),
+                              mca_coll_ucx_op_get_array(sdisps), sdtype,
+                              rbuf, mca_coll_ucx_op_get_array(rcounts),
+                              mca_coll_ucx_op_get_array(rdisps), rdtype,
+                              0 /* op */, 0 /* root */,
+                              mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_alltoallw_init(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t * const *sdtypes,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t * const *rdtypes,
+int mca_coll_ucx_alltoallw_init(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t * const *sdtypes,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t * const *rdtypes,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_PERSISTENT(alltoallw, module,
-                              sbuf, scounts, sdisps, (void * const *) sdtypes,
-                              rbuf, rcounts, rdisps, (void * const *) rdtypes,
-                              0 /* op */, 0 /* root */, 0 /* modifiers */)
+                              sbuf, mca_coll_ucx_op_get_array(scounts),
+                              mca_coll_ucx_op_get_array(sdisps),
+                              (void * const *) sdtypes,
+                              rbuf, mca_coll_ucx_op_get_array(rcounts),
+                              mca_coll_ucx_op_get_array(rdisps),
+                              (void * const *) rdtypes,
+                              0 /* op */, 0 /* root */,
+                              mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_barrier_init(struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
@@ -677,14 +787,19 @@ int mca_coll_ucx_gather_init(const void *sbuf, size_t scount, struct ompi_dataty
                               0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_gatherv_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_gatherv_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_PERSISTENT(gatherv, module,
                               sbuf, scount, sdtype,
-                              rbuf, rcounts, disps, rdtype,
-                              0 /* op */, 0 /* root */, 0 /* modifiers */)
+                              rbuf, mca_coll_ucx_op_get_array(rcounts),
+                              mca_coll_ucx_op_get_array(disps), rdtype,
+                              0 /* op */, 0 /* root */,
+                              mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_reduce_init(const void *sbuf, void* rbuf, size_t count, struct ompi_datatype_t *dtype,
@@ -702,22 +817,21 @@ int mca_coll_ucx_reduce_stable_init(const void *sbuf, void* rbuf, size_t count, 
                               UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
-int mca_coll_ucx_reduce_scatter_init(const void *sbuf, void *rbuf, const int *rcounts, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_scatter_init(const void *sbuf, void *rbuf, ompi_count_array_t rcounts, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
-    COLL_UCX_START_PERSISTENT(reduce_scatter, module,
-                              sbuf, ompi_comm_rank(comm),
-                              rbuf, rcounts, dtype,
-                              op, 0 /* root */, 0 /* modifiers */)
+    COLL_UCX_START_PERSISTENT(reduce_scatter, module, sbuf,
+                              rbuf, mca_coll_ucx_op_get_array(rcounts), dtype,
+                              op, 0 /* root */,
+                              mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_reduce_scatter_stable_init(const void *sbuf, void *rbuf, const int *rcounts, struct ompi_datatype_t *dtype,
+int mca_coll_ucx_reduce_scatter_stable_init(const void *sbuf, void *rbuf, ompi_count_array_t rcounts, struct ompi_datatype_t *dtype,
    struct ompi_op_t *op, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
-    COLL_UCX_START_PERSISTENT(reduce_scatter, module,
-                              sbuf, ompi_comm_rank(comm),
-                              rbuf, rcounts, dtype,
-                              op, 0 /* root */,
+    COLL_UCX_START_PERSISTENT(reduce_scatter, module, sbuf,
+                              rbuf, mca_coll_ucx_op_get_array(rcounts), dtype,
+                              op, 0 /* root */, mca_coll_ucx_op_array_is_32b(rcounts) |
                               UCG_GROUP_COLLECTIVE_MODIFIER_AGGREGATE_STABLE)
 }
 
@@ -760,14 +874,18 @@ int mca_coll_ucx_scatter_init(const void *sbuf, size_t scount, struct ompi_datat
                               0 /* op */, root, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_scatterv_init(const void *sbuf, const int *scounts, const int *disps, struct ompi_datatype_t *sdtype,
-   void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_scatterv_init(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t disps, struct ompi_datatype_t *sdtype,
+   void* rbuf, size_t rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(disps) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+
     COLL_UCX_START_PERSISTENT(scatterv, module,
-                              sbuf, scounts, disps,
+                              sbuf, mca_coll_ucx_op_get_array(scounts),
+                              mca_coll_ucx_op_get_array(disps),
                               sdtype, rbuf, rcount, rdtype,
-                              0 /* op */, root, 0 /* modifiers */)
+                              0 /* op */, root, mca_coll_ucx_op_array_is_32b(disps))
 }
 
 int mca_coll_ucx_neighbor_allgather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
@@ -780,14 +898,19 @@ int mca_coll_ucx_neighbor_allgather(const void *sbuf, size_t scount, struct ompi
                             0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_neighbor_allgatherv(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void * rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_neighbor_allgatherv(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void * rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_BLOCKING(neighbor_allgatherv, module, 0,
                             sbuf, scount, sdtype,
-                            rbuf, rcounts, disps, rdtype,
-                            0 /* op */, 0 /* root */, 0 /* modifiers */)
+                            rbuf, mca_coll_ucx_op_get_array(rcounts),
+                            mca_coll_ucx_op_get_array(disps), rdtype,
+                            0 /* op */, 0 /* root */,
+                            mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_neighbor_alltoall(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
@@ -800,24 +923,44 @@ int mca_coll_ucx_neighbor_alltoall(const void *sbuf, size_t scount, struct ompi_
                             0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_neighbor_alltoallv(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_neighbor_alltoallv(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_BLOCKING(neighbor_alltoallv, module, 0,
-                            sbuf, scounts, sdisps, sdtype,
-                            rbuf, rcounts, rdisps, rdtype,
-                            0 /* op */, 0 /* root */, 0 /* modifiers */)
+                            sbuf, mca_coll_ucx_op_get_array(scounts),
+                            mca_coll_ucx_op_get_array(sdisps), sdtype,
+                            rbuf, mca_coll_ucx_op_get_array(rcounts),
+                            mca_coll_ucx_op_get_array(rdisps), rdtype,
+                            0 /* op */, 0 /* root */,
+                            mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_neighbor_alltoallw(const void *sbuf, const int *scounts, const MPI_Aint *sdisps, struct ompi_datatype_t * const *sdtypes,
-   void *rbuf, const int *rcounts, const MPI_Aint *rdisps, struct ompi_datatype_t * const *rdtypes,
+int mca_coll_ucx_neighbor_alltoallw(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t * const *sdtypes,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t * const *rdtypes,
    struct ompi_communicator_t *comm, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_BLOCKING(neighbor_alltoallw, module, 0,
-                            sbuf, scounts, sdisps, (void * const *) sdtypes,
-                            rbuf, rcounts, rdisps, (void * const *) rdtypes,
-                            0 /* op */, 0 /* root */, 0 /* modifiers */)
+                            sbuf, mca_coll_ucx_op_get_array(scounts),
+                            mca_coll_ucx_op_get_array(sdisps),
+                            (void * const *) sdtypes,
+                            rbuf, mca_coll_ucx_op_get_array(rcounts),
+                            mca_coll_ucx_op_get_array(rdisps),
+                            (void * const *) rdtypes,
+                            0 /* op */, 0 /* root */,
+                            mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_ineighbor_allgather(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
@@ -830,14 +973,19 @@ int mca_coll_ucx_ineighbor_allgather(const void *sbuf, size_t scount, struct omp
                                0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_ineighbor_allgatherv(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void * rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_ineighbor_allgatherv(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void * rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_NONBLOCKING(neighbor_allgatherv, module, 0,
                                sbuf, scount, sdtype,
-                               rbuf, rcounts, disps, rdtype,
-                               0 /* op */, 0 /* root */, 0 /* modifiers */)
+                               rbuf, mca_coll_ucx_op_get_array(rcounts),
+                               mca_coll_ucx_op_get_array(disps), rdtype,
+                               0 /* op */, 0 /* root */,
+                               mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_ineighbor_alltoall(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
@@ -850,24 +998,46 @@ int mca_coll_ucx_ineighbor_alltoall(const void *sbuf, size_t scount, struct ompi
                                0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_ineighbor_alltoallv(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_ineighbor_alltoallv(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_NONBLOCKING(neighbor_alltoallv, module, 0,
-                               sbuf, scounts, sdisps, sdtype,
-                               rbuf, rcounts, rdisps, rdtype,
-                               0 /* op */, 0 /* root */, 0 /* modifiers */)
+                               sbuf, mca_coll_ucx_op_get_array(scounts),
+                               mca_coll_ucx_op_get_array(sdisps), sdtype,
+                               rbuf, mca_coll_ucx_op_get_array(rcounts),
+                               mca_coll_ucx_op_get_array(rdisps), rdtype,
+                               0 /* op */, 0 /* root */,
+                               mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_ineighbor_alltoallw(const void *sbuf, const int *scounts, const MPI_Aint *sdisps, struct ompi_datatype_t * const *sdtypes,
-   void *rbuf, const int *rcounts, const MPI_Aint *rdisps, struct ompi_datatype_t * const *rdtypes,
+int mca_coll_ucx_ineighbor_alltoallw(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t * const *sdtypes,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t * const *rdtypes,
    struct ompi_communicator_t *comm, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_NONBLOCKING(neighbor_alltoallw, module, 0,
-                               sbuf, scounts, sdisps, (void * const *) sdtypes,
-                               rbuf, rcounts, rdisps, (void * const *) rdtypes,
-                               0 /* op */, 0 /* root */, 0 /* modifiers */)
+                               sbuf, mca_coll_ucx_op_get_array(scounts),
+                               mca_coll_ucx_op_get_array(sdisps),
+                               (void * const *) sdtypes,
+                               rbuf, mca_coll_ucx_op_get_array(rcounts),
+                               mca_coll_ucx_op_get_array(rdisps),
+                               (void * const *) rdtypes,
+                               0 /* op */, 0 /* root */,
+                               mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_neighbor_allgather_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
@@ -880,14 +1050,19 @@ int mca_coll_ucx_neighbor_allgather_init(const void *sbuf, size_t scount, struct
                               0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_neighbor_allgatherv_init(const void *sbuf, int scount, struct ompi_datatype_t *sdtype,
-   void * rbuf, const int *rcounts, const int *disps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_neighbor_allgatherv_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
+   void * rbuf, ompi_count_array_t rcounts, ompi_disp_array_t disps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(disps));
+
     COLL_UCX_START_PERSISTENT(neighbor_allgatherv, module,
                               sbuf, scount, sdtype,
-                              rbuf, rcounts, disps, rdtype,
-                              0 /* op */, 0 /* root */, 0 /* modifiers */)
+                              rbuf, mca_coll_ucx_op_get_array(rcounts),
+                              mca_coll_ucx_op_get_array(disps), rdtype,
+                              0 /* op */, 0 /* root */,
+                              mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
 int mca_coll_ucx_neighbor_alltoall_init(const void *sbuf, size_t scount, struct ompi_datatype_t *sdtype,
@@ -900,22 +1075,44 @@ int mca_coll_ucx_neighbor_alltoall_init(const void *sbuf, size_t scount, struct 
                               0 /* op */, 0 /* root */, 0 /* modifiers */)
 }
 
-int mca_coll_ucx_neighbor_alltoallv_init(const void *sbuf, const int *scounts, const int *sdisps, struct ompi_datatype_t *sdtype,
-   void *rbuf, const int *rcounts, const int *rdisps, struct ompi_datatype_t *rdtype,
+int mca_coll_ucx_neighbor_alltoallv_init(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t *sdtype,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t *rdtype,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_PERSISTENT(neighbor_alltoallv, module,
-                              sbuf, scounts, sdisps, sdtype,
-                              rbuf, rcounts, rdisps, rdtype,
-                              0 /* op */, 0 /* root */, 0 /* modifiers */)
+                              sbuf, mca_coll_ucx_op_get_array(scounts),
+                              mca_coll_ucx_op_get_array(sdisps), sdtype,
+                              rbuf, mca_coll_ucx_op_get_array(rcounts),
+                              mca_coll_ucx_op_get_array(rdisps), rdtype,
+                              0 /* op */, 0 /* root */,
+                              mca_coll_ucx_op_array_is_32b(rcounts))
 }
 
-int mca_coll_ucx_neighbor_alltoallw_init(const void *sbuf, const int *scounts, const MPI_Aint *sdisps, struct ompi_datatype_t * const *sdtypes,
-   void *rbuf, const int *rcounts, const MPI_Aint *rdisps, struct ompi_datatype_t * const *rdtypes,
+int mca_coll_ucx_neighbor_alltoallw_init(const void *sbuf, ompi_count_array_t scounts, ompi_disp_array_t sdisps, struct ompi_datatype_t * const *sdtypes,
+   void *rbuf, ompi_count_array_t rcounts, ompi_disp_array_t rdisps, struct ompi_datatype_t * const *rdtypes,
    struct ompi_communicator_t *comm, struct ompi_info_t *info, ompi_request_t ** request, mca_coll_base_module_t *module)
 {
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(scounts));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(sdisps));
+    assert(mca_coll_ucx_op_array_is_32b(rcounts) ==
+           mca_coll_ucx_op_array_is_32b(rdisps));
+
     COLL_UCX_START_PERSISTENT(neighbor_alltoallw, module,
-                              sbuf, scounts, sdisps, (void * const *) sdtypes,
-                              rbuf, rcounts, rdisps, (void * const *) rdtypes,
-                              0 /* op */, 0 /* root */, 0 /* modifiers */)
+                              sbuf, mca_coll_ucx_op_get_array(rcounts),
+                              mca_coll_ucx_op_get_array(sdisps),
+                              (void * const *) sdtypes,
+                              rbuf, mca_coll_ucx_op_get_array(rcounts),
+                              mca_coll_ucx_op_get_array(rdisps),
+                              (void * const *) rdtypes,
+                              0 /* op */, 0 /* root */,
+                              mca_coll_ucx_op_array_is_32b(rcounts))
 }
